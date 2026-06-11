@@ -1,0 +1,324 @@
+{
+  "schema": {
+    "name": "archmotif.archai-model",
+    "version": 1
+  },
+  "source": {
+    "tool": "archmotif",
+    "format": "archai-model",
+    "counts": {
+      "packages": 3,
+      "symbols": 6,
+      "dependencies": 12
+    }
+  },
+  "facets": [
+    {
+      "id": "structure",
+      "description": "structural containment: packages, files, top-level decls"
+    },
+    {
+      "id": "model",
+      "description": "type-level shape: types, fields, embeds"
+    },
+    {
+      "id": "behavior",
+      "description": "behavior-level: functions and methods"
+    },
+    {
+      "id": "control",
+      "description": "control-flow primitives: loops, branches, defers"
+    },
+    {
+      "id": "concurrency",
+      "description": "concurrency primitives: goroutines, channel ops, sync prims"
+    }
+  ],
+  "stereotypes": [
+    {
+      "id": "contract",
+      "source": "archmotif.contract",
+      "description": "marked as a stable contract by .archmotif.yaml"
+    },
+    {
+      "id": "role:adapter_dto",
+      "source": "archmotif.role",
+      "description": "adapter DTO (ADR-027)"
+    },
+    {
+      "id": "role:domain",
+      "source": "archmotif.role",
+      "description": "domain layer (ADR-027)"
+    },
+    {
+      "id": "role:outbound_adapter",
+      "source": "archmotif.role",
+      "description": "outbound adapter layer (ADR-027)"
+    },
+    {
+      "id": "role:port",
+      "source": "archmotif.role",
+      "description": "port / interface seam (ADR-027)"
+    },
+    {
+      "id": "role:value_object",
+      "source": "archmotif.role",
+      "description": "value object (ADR-027)"
+    }
+  ],
+  "packages": [
+    {
+      "id": "pkg:example/adapter",
+      "name": "adapter",
+      "importPath": "example/adapter",
+      "layer": "outbound_adapter",
+      "foreign": false,
+      "stereotypes": [
+        "role:outbound_adapter"
+      ],
+      "symbols": [
+        "func:FromUser",
+        "type:UserDTO"
+      ],
+      "archmotifId": "pkg:example/adapter"
+    },
+    {
+      "id": "pkg:example/domain",
+      "name": "domain",
+      "importPath": "example/domain",
+      "layer": "domain",
+      "foreign": false,
+      "stereotypes": [
+        "role:domain"
+      ],
+      "symbols": [
+        "func:New",
+        "meth:User.Greet",
+        "type:Greeter",
+        "type:User"
+      ],
+      "archmotifId": "pkg:example/domain"
+    },
+    {
+      "id": "pkg:foreign/io",
+      "name": "io",
+      "importPath": "foreign/io",
+      "foreign": true,
+      "archmotifId": "pkg:foreign/io"
+    }
+  ],
+  "symbols": [
+    {
+      "id": "func:FromUser",
+      "name": "FromUser",
+      "qname": "example/adapter.FromUser",
+      "kind": "function",
+      "package": "pkg:example/adapter",
+      "facet": "behavior",
+      "foreign": false,
+      "position": {
+        "file": "example/file.go",
+        "line": 10,
+        "col": 1
+      },
+      "archmotifId": "func:FromUser"
+    },
+    {
+      "id": "func:New",
+      "name": "New",
+      "qname": "example/domain.New",
+      "kind": "function",
+      "package": "pkg:example/domain",
+      "facet": "behavior",
+      "foreign": false,
+      "position": {
+        "file": "example/file.go",
+        "line": 10,
+        "col": 1
+      },
+      "archmotifId": "func:New"
+    },
+    {
+      "id": "meth:User.Greet",
+      "name": "Greet",
+      "qname": "(*example/domain.User).Greet",
+      "kind": "method",
+      "package": "pkg:example/domain",
+      "facet": "behavior",
+      "foreign": false,
+      "position": {
+        "file": "example/file.go",
+        "line": 10,
+        "col": 1
+      },
+      "archmotifId": "meth:User.Greet"
+    },
+    {
+      "id": "type:Greeter",
+      "name": "Greeter",
+      "qname": "example/domain.Greeter",
+      "kind": "type",
+      "package": "pkg:example/domain",
+      "facet": "model",
+      "stereotypes": [
+        "role:port"
+      ],
+      "foreign": false,
+      "position": {
+        "file": "example/example.go",
+        "line": 1,
+        "col": 1
+      },
+      "archmotifId": "type:Greeter"
+    },
+    {
+      "id": "type:User",
+      "name": "User",
+      "qname": "example/domain.User",
+      "kind": "type",
+      "package": "pkg:example/domain",
+      "facet": "model",
+      "stereotypes": [
+        "contract",
+        "role:value_object"
+      ],
+      "foreign": false,
+      "isContract": true,
+      "position": {
+        "file": "example/example.go",
+        "line": 1,
+        "col": 1
+      },
+      "archmotifId": "type:User"
+    },
+    {
+      "id": "type:UserDTO",
+      "name": "UserDTO",
+      "qname": "example/adapter.UserDTO",
+      "kind": "type",
+      "package": "pkg:example/adapter",
+      "facet": "model",
+      "stereotypes": [
+        "role:adapter_dto"
+      ],
+      "foreign": false,
+      "position": {
+        "file": "example/example.go",
+        "line": 1,
+        "col": 1
+      },
+      "archmotifId": "type:UserDTO"
+    }
+  ],
+  "dependencies": [
+    {
+      "id": "func:FromUser->calls->func:New",
+      "from": "func:FromUser",
+      "to": "func:New",
+      "relation": "calls",
+      "kind": "calls",
+      "fromKind": "function",
+      "toKind": "function"
+    },
+    {
+      "id": "func:FromUser->usesType->type:User",
+      "from": "func:FromUser",
+      "to": "type:User",
+      "relation": "uses_type",
+      "kind": "usesType",
+      "fromKind": "function",
+      "toKind": "type"
+    },
+    {
+      "id": "func:New->returns->type:User",
+      "from": "func:New",
+      "to": "type:User",
+      "relation": "returns",
+      "kind": "returns",
+      "fromKind": "function",
+      "toKind": "type"
+    },
+    {
+      "id": "pkg:example/adapter->contains->func:FromUser",
+      "from": "pkg:example/adapter",
+      "to": "func:FromUser",
+      "relation": "contains",
+      "kind": "contains",
+      "fromKind": "package",
+      "toKind": "function"
+    },
+    {
+      "id": "pkg:example/adapter->contains->type:UserDTO",
+      "from": "pkg:example/adapter",
+      "to": "type:UserDTO",
+      "relation": "contains",
+      "kind": "contains",
+      "fromKind": "package",
+      "toKind": "type"
+    },
+    {
+      "id": "pkg:example/adapter->dependsOn->pkg:example/domain",
+      "from": "pkg:example/adapter",
+      "to": "pkg:example/domain",
+      "relation": "depends_on",
+      "kind": "dependsOn",
+      "fromKind": "package",
+      "toKind": "package"
+    },
+    {
+      "id": "pkg:example/adapter->dependsOn->pkg:foreign/io",
+      "from": "pkg:example/adapter",
+      "to": "pkg:foreign/io",
+      "relation": "depends_on",
+      "kind": "dependsOn",
+      "fromKind": "package",
+      "toKind": "package"
+    },
+    {
+      "id": "pkg:example/domain->contains->func:New",
+      "from": "pkg:example/domain",
+      "to": "func:New",
+      "relation": "contains",
+      "kind": "contains",
+      "fromKind": "package",
+      "toKind": "function"
+    },
+    {
+      "id": "pkg:example/domain->contains->meth:User.Greet",
+      "from": "pkg:example/domain",
+      "to": "meth:User.Greet",
+      "relation": "contains",
+      "kind": "contains",
+      "fromKind": "package",
+      "toKind": "method"
+    },
+    {
+      "id": "pkg:example/domain->contains->type:Greeter",
+      "from": "pkg:example/domain",
+      "to": "type:Greeter",
+      "relation": "contains",
+      "kind": "contains",
+      "fromKind": "package",
+      "toKind": "type"
+    },
+    {
+      "id": "pkg:example/domain->contains->type:User",
+      "from": "pkg:example/domain",
+      "to": "type:User",
+      "relation": "contains",
+      "kind": "contains",
+      "fromKind": "package",
+      "toKind": "type"
+    },
+    {
+      "id": "type:User->implements->type:Greeter",
+      "from": "type:User",
+      "to": "type:Greeter",
+      "relation": "implements",
+      "kind": "implements",
+      "isImplementation": true,
+      "fromKind": "type",
+      "toKind": "type"
+    }
+  ]
+}

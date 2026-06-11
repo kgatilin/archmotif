@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <key id="n_id" for="node" attr.name="id" attr.type="string"/>
+  <key id="n_label" for="node" attr.name="label" attr.type="string"/>
+  <key id="n_title" for="node" attr.name="memory_title" attr.type="string"/>
+  <key id="e_id" for="edge" attr.name="id" attr.type="string"/>
+  <key id="e_predicate" for="edge" attr.name="predicate" attr.type="string"/>
+  <key id="e_layer" for="edge" attr.name="relation_layer" attr.type="string"/>
+  <graph id="G" edgedefault="directed">
+    <node id="n0">
+      <data key="n_id">root</data>
+      <data key="n_label">Root subsystem</data>
+      <data key="n_title">Root subsystem</data>
+    </node>
+    <node id="n1"><data key="n_id">leaf-01</data><data key="n_title">Leaf 01</data></node>
+    <node id="n2"><data key="n_id">leaf-02</data><data key="n_title">Leaf 02</data></node>
+    <node id="n3"><data key="n_id">leaf-03</data><data key="n_title">Leaf 03</data></node>
+    <node id="n4"><data key="n_id">leaf-04</data><data key="n_title">Leaf 04</data></node>
+    <node id="n5"><data key="n_id">leaf-05</data><data key="n_title">Leaf 05</data></node>
+    <node id="n6"><data key="n_id">leaf-06</data><data key="n_title">Leaf 06</data></node>
+    <node id="n7"><data key="n_id">leaf-07</data><data key="n_title">Leaf 07</data></node>
+    <node id="n8"><data key="n_id">leaf-08</data><data key="n_title">Leaf 08</data></node>
+    <node id="n9"><data key="n_id">leaf-09</data><data key="n_title">Leaf 09</data></node>
+    <node id="n10"><data key="n_id">leaf-10</data><data key="n_title">Leaf 10</data></node>
+    <node id="n11"><data key="n_id">existing-area</data><data key="n_title">Existing area</data></node>
+    <node id="n12"><data key="n_id">nested-leaf</data><data key="n_title">Nested leaf</data></node>
+    <node id="n13"><data key="n_id">outside</data><data key="n_title">Outside context</data></node>
+
+    <edge id="e1" source="n1" target="n0"><data key="e_id">rel-01</data><data key="e_predicate">part-of</data><data key="e_layer">SEMANTIC</data></edge>
+    <edge id="e2" source="n2" target="n0"><data key="e_id">rel-02</data><data key="e_predicate">part-of</data><data key="e_layer">SEMANTIC</data></edge>
+    <edge id="e3" source="n3" target="n0"><data key="e_id">rel-03</data><data key="e_predicate">part-of</data><data key="e_layer">SEMANTIC</data></edge>
+    <edge id="e4" source="n4" target="n0"><data key="e_id">rel-04</data><data key="e_predicate">part-of</data><data key="e_layer">SEMANTIC</data></edge>
+    <edge id="e5" source="n5" target="n0"><data key="e_id">rel-05</data><data key="e_predicate">part-of</data><data key="e_layer">SEMANTIC</data></edge>
+    <edge id="e6" source="n6" target="n0"><data key="e_id">rel-06</data><data key="e_predicate">part-of</data><data key="e_layer">SEMANTIC</data></edge>
+    <edge id="e7" source="n7" target="n0"><data key="e_id">rel-07</data><data key="e_predicate">part-of</data><data key="e_layer">SEMANTIC</data></edge>
+    <edge id="e8" source="n8" target="n0"><data key="e_id">rel-08</data><data key="e_predicate">part-of</data><data key="e_layer">SEMANTIC</data></edge>
+    <edge id="e9" source="n9" target="n0"><data key="e_id">rel-09</data><data key="e_predicate">part-of</data><data key="e_layer">SEMANTIC</data></edge>
+    <edge id="e10" source="n10" target="n0"><data key="e_id">rel-10</data><data key="e_predicate">part-of</data><data key="e_layer">SEMANTIC</data></edge>
+    <edge id="e11" source="n11" target="n0"><data key="e_id">rel-area</data><data key="e_predicate">part-of</data><data key="e_layer">SEMANTIC</data></edge>
+    <edge id="e12" source="n12" target="n11"><data key="e_id">rel-nested</data><data key="e_predicate">part-of</data><data key="e_layer">SEMANTIC</data></edge>
+    <edge id="e13" source="n1" target="n13"><data key="e_id">rel-context</data><data key="e_predicate">connects-to</data><data key="e_layer">SEMANTIC</data></edge>
+  </graph>
+</graphml>

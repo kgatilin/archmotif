@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns">
+  <key id="memory_title" for="node" attr.name="title" attr.type="string"/>
+  <key id="memory_type" for="node" attr.name="memoryType" attr.type="string"/>
+  <key id="entity_type" for="node" attr.name="entityType" attr.type="string"/>
+  <key id="labels" for="node" attr.name="labels" attr.type="string"/>
+  <graph id="memory" edgedefault="directed">
+    <node id="anchor">
+      <data key="memory_title">_unplaced</data>
+      <data key="memory_type">SEMANTIC</data>
+      <data key="entity_type">phantom</data>
+      <data key="labels">phantom</data>
+    </node>
+    <node id="orphan-a">
+      <data key="memory_title">Alpha orphan</data>
+      <data key="memory_type">SEMANTIC</data>
+      <data key="entity_type">fact</data>
+      <data key="labels">project:demo,topic:a</data>
+    </node>
+    <node id="orphan-b">
+      <data key="memory_title">Beta orphan</data>
+      <data key="memory_type">SEMANTIC</data>
+      <data key="entity_type">fact</data>
+      <data key="labels">project:demo,topic:b</data>
+    </node>
+    <node id="orphan-c">
+      <data key="memory_title">Gamma orphan</data>
+      <data key="memory_type">SEMANTIC</data>
+      <data key="entity_type">fact</data>
+      <data key="labels">project:demo,topic:c</data>
+    </node>
+  </graph>
+</graphml>

@@ -1,0 +1,4 @@
+contracts:
+  - interface: userstore/store.UserStore
+  - interface: userstore/store.AdminStore
+  - type: userstore/api.Request

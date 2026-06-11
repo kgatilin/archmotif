@@ -1,0 +1,30 @@
+# Build artifacts
+bin/
+dist/
+*.test
+*.out
+
+# Go
+vendor/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# Local
+.archmotif/
+*.local.yaml
+
+# Stage 7 LLM usage log (per ADR-024)
+usage.jsonl
+
+# Scratch
+tmp/
+
+# Dogfood outputs (scripts/dogfood-*.sh write here; outputs are not committed)
+dogfood/

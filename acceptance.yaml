@@ -1,0 +1,227 @@
+version: 1
+suite: archmotif-graph-metrics
+description: >
+  Target acceptance contract for archmotif as a graph-agnostic metrics library
+  (see docs/prd/archmotif-graph-metrics-library.md). Spec-first: these cases
+  define the user-facing CLI contract and will pass once the target commands
+  (analyze, calculate, quotient, policy) are implemented. The fixtures are a
+  tiny domain-free GraphML graph plus a policy file, so nothing here depends on
+  source parsing.
+
+subject:
+  binary: ./bin/archmotif
+
+setup:
+  files:
+    # 4-node directed GraphML graph. Nodes carry a `domain` attribute (declared
+    # partition); edges carry a `weight`. `core` is a pure sink: io -> core only.
+    - name: graph
+      path: fixtures/sample.graphml
+      content: |
+        <?xml version="1.0" encoding="UTF-8"?>
+        <graphml xmlns="http://graphml.graphdrawing.org/xmlns">
+          <key id="domain" for="node" attr.name="domain" attr.type="string"/>
+          <key id="vec" for="node" attr.name="vec" attr.type="string"/>
+          <key id="weight" for="edge" attr.name="weight" attr.type="double"/>
+          <graph edgedefault="directed">
+            <node id="a"><data key="domain">io</data><data key="vec">1 0</data></node>
+            <node id="b"><data key="domain">io</data><data key="vec">1 0</data></node>
+            <node id="c"><data key="domain">core</data><data key="vec">0 1</data></node>
+            <node id="d"><data key="domain">core</data><data key="vec">0 1</data></node>
+            <edge source="a" target="b"><data key="weight">1.0</data></edge>
+            <edge source="a" target="c"><data key="weight">1.0</data></edge>
+            <edge source="b" target="c"><data key="weight">1.0</data></edge>
+            <edge source="d" target="c"><data key="weight">1.0</data></edge>
+          </graph>
+        </graphml>
+    # Conformant policy: group by `domain`, allow only io -> core. The fixture
+    # has no core -> io edges, so the residual is empty.
+    - name: rulesOk
+      path: fixtures/policy-ok.yaml
+      content: |
+        partition: domain
+        allow:
+          - from: io
+            to: core
+    # Violated policy: allow only core -> io. The fixture's io -> core edges
+    # (a -> c, b -> c) now violate it.
+    - name: rulesBad
+      path: fixtures/policy-bad.yaml
+      content: |
+        partition: domain
+        allow:
+          - from: core
+            to: io
+    # "After" graph for the focus diff: the same 4-node graph plus one new node
+    # `e` and a new edge d -> e. Diffing `graph` -> `graphAfter` must surface
+    # exactly the added node/edge.
+    - name: graphAfter
+      path: fixtures/sample-after.graphml
+      content: |
+        <?xml version="1.0" encoding="UTF-8"?>
+        <graphml xmlns="http://graphml.graphdrawing.org/xmlns">
+          <key id="domain" for="node" attr.name="domain" attr.type="string"/>
+          <key id="weight" for="edge" attr.name="weight" attr.type="double"/>
+          <graph edgedefault="directed">
+            <node id="a"><data key="domain">io</data></node>
+            <node id="b"><data key="domain">io</data></node>
+            <node id="c"><data key="domain">core</data></node>
+            <node id="d"><data key="domain">core</data></node>
+            <node id="e"><data key="domain">core</data></node>
+            <edge source="a" target="b"><data key="weight">1.0</data></edge>
+            <edge source="a" target="c"><data key="weight">1.0</data></edge>
+            <edge source="b" target="c"><data key="weight">1.0</data></edge>
+            <edge source="d" target="c"><data key="weight">1.0</data></edge>
+            <edge source="d" target="e"><data key="weight">1.0</data></edge>
+          </graph>
+        </graphml>
+
+defaults:
+  timeout: 60s
+  confirm: false
+
+cases:
+  - id: help-lists-commands
+    name: top-level help lists the metric commands
+    steps:
+      - name: help
+        run:
+          args: ["--help"]
+        expect:
+          exitCode: 0
+          stderr:
+            contains:
+              - "analyze"
+              - "calculate"
+              - "quotient"
+              - "policy"
+
+  - id: analyze-suite
+    name: analyze runs the metric suite over a GraphML graph
+    steps:
+      - name: analyze
+        run:
+          args: ["analyze", "${file.graph}"]
+        expect:
+          exitCode: 0
+          stdout:
+            contains:
+              - "modularity"
+              - "lambda2"
+              - "layering"
+            notContains:
+              - "panic"
+
+  - id: analyze-json
+    name: analyze --json emits a machine-readable payload
+    steps:
+      - name: analyze json
+        run:
+          args: ["analyze", "${file.graph}", "--json"]
+        expect:
+          exitCode: 0
+          stdout:
+            contains:
+              - "\"modularity\""
+            notContains:
+              - "panic"
+
+  - id: calculate-one-metric
+    name: calculate computes a single named metric
+    steps:
+      - name: calculate modularity
+        run:
+          args: ["calculate", "modularity", "${file.graph}"]
+        expect:
+          exitCode: 0
+          stdout:
+            contains:
+              - "modularity"
+            notContains:
+              - "panic"
+
+  - id: semantic-clusters-from-vectors
+    name: semantic-clusters groups nodes by their precomputed vectors
+    steps:
+      - name: semantic clusters
+        run:
+          args: ["calculate", "semantic-clusters", "${file.graph}"]
+        expect:
+          exitCode: 0
+          stdout:
+            contains:
+              - "cluster"
+            notContains:
+              - "panic"
+
+  - id: quotient-by-attribute
+    name: quotient collapses the graph by a declared node attribute
+    steps:
+      - name: quotient by domain
+        run:
+          args: ["quotient", "${file.graph}", "--partition", "domain"]
+        expect:
+          exitCode: 0
+          stdout:
+            contains:
+              - "core"
+              - "io"
+            notContains:
+              - "panic"
+
+  - id: policy-conformant-passes
+    name: policy exits 0 when the residual is empty
+    steps:
+      - name: policy ok
+        run:
+          args: ["policy", "${file.graph}", "${file.rulesOk}"]
+        expect:
+          exitCode: 0
+          stdout:
+            notContains:
+              - "panic"
+
+  - id: policy-violation-fails
+    name: policy exits non-zero and lists the violating edges
+    steps:
+      - name: policy bad
+        run:
+          args: ["policy", "${file.graph}", "${file.rulesBad}"]
+        expect:
+          exitCode: 1
+          stdout:
+            contains:
+              - "a -> c"
+              - "b -> c"
+
+  - id: diff-focuses-added-subgraph
+    name: diff reports only what the after-graph adds
+    steps:
+      - name: diff json
+        run:
+          args: ["diff", "${file.graph}", "${file.graphAfter}", "--key", "id", "--json"]
+        expect:
+          exitCode: 0
+          stdout:
+            contains:
+              - "\"added_count\": 1"
+              - "\"removed_count\": 0"
+              - "\"e\""
+            notContains:
+              - "panic"
+
+  - id: diff-emits-marked-graphml
+    name: diff emits a focused GraphML marking added vs context
+    steps:
+      - name: diff graphml
+        run:
+          args: ["diff", "${file.graph}", "${file.graphAfter}", "--key", "id"]
+        expect:
+          exitCode: 0
+          stdout:
+            contains:
+              - "key=\"diff\""
+              - "added"
+              - "context"
+            notContains:
+              - "panic"

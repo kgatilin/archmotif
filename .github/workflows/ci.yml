@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test
+        run: go test -race -count=1 -timeout 20m ./...
+
+      - name: archmotif --version
+        run: |
+          go build -o /tmp/archmotif ./cmd/archmotif
+          /tmp/archmotif --version
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.61.0  # bumped from v1.59.1 to support go 1.23 module directive

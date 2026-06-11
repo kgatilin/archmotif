@@ -1,0 +1,16 @@
+{
+  "id": "hub-notes-2026-05",
+  "kind": "flat_star_hub",
+  "selected": [
+    {"id": "mem:hub-001", "title": "Shared notes hub"},
+    {"id": "mem:c-101",   "title": "Note: message routing tweak"},
+    {"id": "mem:c-102",   "title": "Note: pipeline loop status"},
+    {"id": "mem:c-103",   "title": "Note: subsystem demo"},
+    {"id": "mem:c-104",   "title": "Note: role metadata thread"},
+    {"id": "mem:c-105",   "title": "Note: service token rotation"},
+    {"id": "mem:c-106",   "title": "Note: worker capacity limits"}
+  ],
+  "allowedOps": ["regroup", "merge", "retitle", "annotate"],
+  "forbidRemovals": true,
+  "contextLimit": 12
+}

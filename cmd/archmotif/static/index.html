@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>archmotif actual graph</title>
+<link rel="stylesheet" href="/static/style.css">
+
+</head>
+<body data-graph-id="{{.GraphID}}">
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <h1>archmotif actual graph</h1>
+      <p>{{.Source}} · {{.ModuleRoot}}</p>
+    </div>
+    <div class="controls">
+      <div class="seg" aria-label="view">
+        <button id="overviewBtn" class="active">Packages</button>
+        <button id="diffPackagesBtn">Diff Packages</button>
+        <button id="structureBtn">Structure</button>
+        <button id="publicBtn" class="active">Public</button>
+        <button id="allBtn">All</button>
+      </div>
+      <div class="seg" aria-label="depth">
+        <button data-depth="1" class="depth active">1 hop</button>
+        <button data-depth="2" class="depth">2 hops</button>
+      </div>
+      <div id="layoutControls" class="seg" aria-label="layout"></div>
+      <button id="applyLayoutBtn" class="toolbtn">Apply</button>
+      <label class="check"><input id="externalBox" type="checkbox"> external</label>
+    </div>
+    <div class="search">
+      <input id="searchInput" type="search" placeholder="Search package, type, function, method">
+      <div id="searchResults" class="results"></div>
+    </div>
+  </header>
+  <main class="workspace">
+    <section class="stage">
+      <div class="graph-title">
+        <h2 id="title">Loading</h2>
+        <p id="subtitle"></p>
+        <span id="warn" class="warn" hidden></span>
+      </div>
+      <svg id="graph" role="img" aria-label="Architecture graph">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ca3af"></path>
+          </marker>
+        </defs>
+        <g id="viewport">
+          <g id="edges"></g>
+          <g id="nodes"></g>
+        </g>
+      </svg>
+      <div class="legend">
+        <span class="chip"><span class="dot" style="background:var(--pkg)"></span>package</span>
+        <span class="chip"><span class="dot" style="background:var(--type)"></span>type</span>
+        <span class="chip"><span class="dot" style="background:var(--func)"></span>function</span>
+        <span class="chip"><span class="dot" style="background:var(--method)"></span>method</span>
+        <span class="chip"><span class="dot" style="background:var(--contract); border:2px solid var(--contract)"></span>contract</span>
+        <span class="chip"><span class="dot" style="background:var(--diff-added)"></span>added</span>
+        <span class="chip"><span class="dot" style="background:var(--diff-changed)"></span>changed</span>
+        <span class="chip"><span class="dot" style="background:#fff1f2; border:2px dashed var(--diff-removed)"></span>removed</span>
+      </div>
+    </section>
+    <aside class="side">
+      <h3>View</h3>
+      <div class="stats">
+        <div class="stat"><strong id="statNodes">0</strong><span>visible nodes</span></div>
+        <div class="stat"><strong id="statEdges">0</strong><span>visible edges</span></div>
+        <div class="stat"><strong id="statPackages">0</strong><span>packages</span></div>
+        <div class="stat"><strong id="statContracts">0</strong><span>contracts</span></div>
+      </div>
+      <div id="crumbs" class="actions"></div>
+      <div class="panel diff-panel">
+        <h3>Diff</h3>
+        <div class="diff-controls">
+          <input id="diffFromInput" type="text" placeholder="base graph id">
+          <button id="applyDiffBtn">Apply</button>
+          <button id="clearDiffBtn">Clear</button>
+        </div>
+        <div id="diffSummary" class="empty">No diff overlay.</div>
+      </div>
+      <div class="panel targets-panel">
+        <h3>Targets</h3>
+        <div id="targetList" class="target-list"></div>
+      </div>
+      <div class="panel node-detail">
+        <h3>Selection</h3>
+        <div id="selection" class="empty">Click a node. Double-click package nodes to drill into a package; double-click other nodes to focus their neighborhood.</div>
+      </div>
+    </aside>
+  </main>
+</div>
+<script src="/static/app.js" defer></script>
+
+</body>
+</html>

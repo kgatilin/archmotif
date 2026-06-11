@@ -1,0 +1,25 @@
+proposal_id: motif-001
+description: extract interface from repeated motif (size 3)
+affected:
+  - pkg/store/user.go
+  - pkg/store/order.go
+  - pkg/store/product.go
+target_subgraph:
+  roles:
+    - id: Iface
+      kind: interface
+      methods:
+        - {name_role: Method, params: [{role: Param, type_role: ParamType}], return_role: RetType}
+    - id: Impl
+      kind: struct
+    - id: Method
+      kind: method
+      receiver_role: Impl
+      realises: {role: Iface, method: Method}
+  edges:
+    - {from: Impl, to: Iface, kind: implements}
+    - {from: Impl, to: Method, kind: contains}
+samples:
+  - {Iface: UserStore, Impl: SQLUserStore, Method: Find}
+  - {Iface: OrderStore, Impl: SQLOrderStore, Method: Find}
+  - {Iface: ProductStore, Impl: PgProductStore, Method: Lookup}

@@ -1,0 +1,60 @@
+# Baseline import-flow policy: the current macro dependency graph as an
+# allow-list. Commit it as arch-policy.yaml to ratchet — any NEW cross-group
+# edge then fails `archmotif policy`. Regenerate intentionally when the
+# architecture legitimately changes.
+partition: group
+allow:
+  - {from: "cmd", to: "internal/anomalies"}
+  - {from: "cmd", to: "internal/archai"}
+  - {from: "cmd", to: "internal/catalog"}
+  - {from: "cmd", to: "internal/contract"}
+  - {from: "cmd", to: "internal/contracts"}
+  - {from: "cmd", to: "internal/coupling"}
+  - {from: "cmd", to: "internal/diagram"}
+  - {from: "cmd", to: "internal/graph"}
+  - {from: "cmd", to: "internal/graphmlx"}
+  - {from: "cmd", to: "internal/llm"}
+  - {from: "cmd", to: "internal/mcpserver"}
+  - {from: "cmd", to: "internal/metrics"}
+  - {from: "cmd", to: "internal/parser"}
+  - {from: "cmd", to: "internal/patterns"}
+  - {from: "cmd", to: "internal/propose"}
+  - {from: "cmd", to: "internal/roles"}
+  - {from: "cmd", to: "internal/shape"}
+  - {from: "cmd", to: "internal/skeleton"}
+  - {from: "cmd", to: "internal/targetcontract"}
+  - {from: "cmd", to: "internal/verify"}
+  - {from: "internal/anomalies", to: "internal/graph"}
+  - {from: "internal/anomalies", to: "internal/metrics"}
+  - {from: "internal/archai", to: "internal/graph"}
+  - {from: "internal/catalog", to: "internal/graph"}
+  - {from: "internal/catalog", to: "internal/metrics"}
+  - {from: "internal/catalog", to: "internal/patterns"}
+  - {from: "internal/contract", to: "internal/graphmlx"}
+  - {from: "internal/contracts", to: "internal/graph"}
+  - {from: "internal/contracts", to: "internal/parser"}
+  - {from: "internal/coupling", to: "internal/graph"}
+  - {from: "internal/diagram", to: "internal/graph"}
+  - {from: "internal/mcpserver", to: "internal/graph"}
+  - {from: "internal/mcpserver", to: "internal/graphmlx"}
+  - {from: "internal/mcpserver", to: "internal/metrics"}
+  - {from: "internal/mcpserver", to: "internal/targetcontract"}
+  - {from: "internal/metrics", to: "internal/graph"}
+  - {from: "internal/parser", to: "internal/graph"}
+  - {from: "internal/patterns", to: "internal/graph"}
+  - {from: "internal/proposal", to: "internal/graph"}
+  - {from: "internal/proposal", to: "internal/metrics"}
+  - {from: "internal/propose", to: "internal/anomalies"}
+  - {from: "internal/propose", to: "internal/graph"}
+  - {from: "internal/propose", to: "internal/metrics"}
+  - {from: "internal/propose", to: "internal/proposal"}
+  - {from: "internal/roles", to: "internal/contracts"}
+  - {from: "internal/roles", to: "internal/graph"}
+  - {from: "internal/skeleton", to: "internal/graph"}
+  - {from: "internal/skeleton", to: "internal/propose"}
+  - {from: "internal/targetcontract", to: "internal/graph"}
+  - {from: "internal/targetcontract", to: "internal/parser"}
+  - {from: "internal/targetcontract", to: "internal/proposal"}
+  - {from: "internal/verify", to: "internal/graph"}
+  - {from: "pkg", to: "internal/graph"}
+  - {from: "scripts", to: "internal/graph"}

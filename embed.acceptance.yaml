@@ -1,0 +1,46 @@
+version: 1
+suite: archmotif-embed-live
+description: >
+  Live acceptance for `embed`: builds node vectors from a text attribute via
+  Vertex. Separate from acceptance.yaml because it requires a configured Vertex
+  project (and ADC) — its requireEnv must not gate the deterministic suite.
+
+subject:
+  binary: ./bin/archmotif
+
+setup:
+  requireEnv: ["ARCHMOTIF_GCP_PROJECT"]
+  files:
+    # Nodes carry a `doc` text attribute; embed turns it into a `vec`.
+    - name: textGraph
+      path: fixtures/text.graphml
+      content: |
+        <?xml version="1.0" encoding="UTF-8"?>
+        <graphml xmlns="http://graphml.graphdrawing.org/xmlns">
+          <key id="doc" for="node" attr.name="doc" attr.type="string"/>
+          <graph edgedefault="directed">
+            <node id="a"><data key="doc">reads and writes files on disk</data></node>
+            <node id="b"><data key="doc">parses bytes into a syntax tree</data></node>
+            <edge source="a" target="b"/>
+          </graph>
+        </graphml>
+
+defaults:
+  timeout: 120s
+  confirm: false
+
+cases:
+  - id: embed-builds-vectors
+    name: embed adds a vector per node from the text attribute
+    steps:
+      - name: embed
+        run:
+          args: ["embed", "${file.textGraph}", "--text-key", "doc"]
+        expect:
+          exitCode: 0
+          stdout:
+            contains:
+              - "vec"
+            notContains:
+              - "panic"
+              - "error"

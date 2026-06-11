@@ -1,0 +1,13 @@
+{
+  "id": "orphan-2026-05-06",
+  "kind": "orphan_bucket",
+  "selected": [
+    {"id": "mem:9d1a", "title": "Service token rotation"},
+    {"id": "mem:7b22", "title": "Test harness layout notes"},
+    {"id": "mem:3c81", "title": "Memory schema v3 sketch"},
+    {"id": "mem:5d04", "title": "Reminder API renames 2026-04"}
+  ],
+  "allowedOps": ["regroup", "annotate"],
+  "forbidRemovals": true,
+  "contextLimit": 8
+}

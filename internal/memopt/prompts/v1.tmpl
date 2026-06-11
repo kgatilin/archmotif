@@ -1,0 +1,64 @@
+You are restructuring a small batch of nodes in a memory graph.
+
+CONTRACT
+- id: {{.ID}}
+- kind: {{.Kind}}
+- forbidRemovals: {{.ForbidRemovals}}
+- contextLimit: {{.ContextLimit}}
+- allowedOps: {{range $i, $op := .AllowedOps}}{{if $i}}, {{end}}{{$op}}{{end}}
+
+SELECTED NODES (you may operate ONLY on these IDs):
+{{range .Selected}}- {{.ID}} :: {{.Title}}
+{{end}}
+
+MEMORY CONTEXT GATHERING
+1. Before proposing edits, fetch memory context for the SELECTED node IDs and their titles.
+2. Fetch in bounded batches of at most {{.ContextLimit}} items per request. Do not exceed this batch size.
+3. Prefer fetching by ID. When an ID returns nothing, fall back to fetching by exact title.
+4. Stop fetching once you have enough context to assign every SELECTED node a disposition.
+5. You MUST report every memory item you fetched in `contextSourcesUsed` (id, optional title, optional excerpt).
+   An empty `contextSourcesUsed` array is treated as a non-response and rejected.
+
+OPERATIONS
+You may apply the following operations and ONLY these:
+{{range .AllowedOps}}- {{.}}
+{{end}}
+- Each operation names a `targetId` from the SELECTED list.
+- `regroup` and `merge` use `secondaryId` to name the new parent / merge survivor.
+{{if .ForbidRemovals}}- This contract FORBIDS removals: every `regroup` and `merge` MUST set `secondaryId` to a real node id.
+{{else}}- Removals (empty `secondaryId` on regroup/merge) are allowed but require explicit rationale.
+{{end}}- Do not introduce IDs that are not in SELECTED or referenced from memory context.
+
+ASSIGNMENT VALIDATION (mandatory)
+For EVERY SELECTED node id you must emit exactly one entry in `assignmentValidation`:
+  {nodeId, outcome, note?}
+where `outcome` is one of: kept, regrouped, merged, retitled, annotated.
+A patch missing entries for any SELECTED node, or naming a non-SELECTED node, is rejected.
+
+GROUPING RATIONALE
+If your patch contains any regroup or merge operation, `groupingRationale` MUST be a
+non-empty paragraph explaining the new grouping decision in human-readable terms.
+
+OUTPUT FORMAT
+Return one fenced JSON block, nothing before or after:
+
+```json
+{
+  "contractId": "{{.ID}}",
+  "operations": [
+    {"op": "regroup", "targetId": "<id>", "secondaryId": "<parent-id>", "rationale": "<why>"}
+  ],
+  "assignmentValidation": [
+    {"nodeId": "<id>", "outcome": "regrouped", "note": "<optional>"}
+  ],
+  "groupingRationale": "<paragraph>",
+  "contextSourcesUsed": [
+    {"id": "<memory-item-id>", "title": "<optional>", "excerpt": "<optional>"}
+  ]
+}
+```
+
+Rules:
+- One fenced ```json block. No commentary inside or outside the fence.
+- `contractId` MUST equal the contract id above.
+- Do not change the schema. Do not add fields. Do not omit required fields.

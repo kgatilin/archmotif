@@ -1,0 +1,26 @@
+You are refactoring Go code to apply a structural transformation.
+
+PROPOSAL: {{.Description}}
+TARGET SHAPE (annotated Go):
+{{.SkeletonGo}}
+
+EXISTING SAMPLE INSTANCES:
+{{range .Samples}}- {{.}}
+{{end}}
+
+ORIGINAL CODE REGIONS:
+{{range $path, $content := .AffectedFiles}}--- {{$path}} ---
+{{$content}}
+
+{{end}}
+
+TASK
+1. Choose domain-meaningful identifiers for the placeholders (e.g. <Iface>, <Method>).
+2. Generate the new files implementing the target shape.
+3. Update call sites only as required to compile.
+4. Output one git patch (unified diff format, applies with `git apply`) covering all changes.
+
+OUTPUT FORMAT
+- One fenced ```diff block, nothing before or after.
+- Diff paths are relative to module root.
+- No commentary inside the fence.
