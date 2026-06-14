@@ -1,12 +1,12 @@
-// Package matrixgraph is a public, graph-in matrix-algebra validation library.
+// Package graphval is a public, graph-in matrix-algebra validation library.
 // The caller hands over a directed graph — named nodes (with optional string
-// attributes) and directed edges between node names — and matrixgraph builds
+// attributes) and directed edges between node names — and graphval builds
 // the dense adjacency matrix internally and runs every validator as linear
 // algebra over it.
 //
 // The caller never sees a matrix. There is no [][]bool and no *mat.Dense
 // anywhere in the public surface: adjacency is a private detail. Callers think
-// in node names; matrixgraph maps names to indices, runs the matrix algebra,
+// in node names; graphval maps names to indices, runs the matrix algebra,
 // and offers both index-based and name-based result accessors.
 //
 // Internally every operation is expressed as linear algebra over the dense
@@ -16,7 +16,7 @@
 // powers, row/column sums).
 //
 //	A[i][j] = 1  means a directed edge From=names[i] → To=names[j].
-package matrixgraph
+package graphval
 
 import (
 	"fmt"
@@ -40,7 +40,7 @@ type Edge struct {
 }
 
 // Graph is an immutable directed graph. The caller builds it from nodes and
-// edges; matrixgraph holds the dense 0/1 adjacency internally and never exposes
+// edges; graphval holds the dense 0/1 adjacency internally and never exposes
 // it.
 //
 // Node identity is positional inside the graph: index i in [0,N) corresponds to
@@ -71,10 +71,10 @@ func New(nodes []Node, edges []Edge) (*Graph, error) {
 	attrs := make([]map[string]string, n)
 	for i, nd := range nodes {
 		if nd.Name == "" {
-			return nil, fmt.Errorf("matrixgraph: node %d has an empty name", i)
+			return nil, fmt.Errorf("graphval: node %d has an empty name", i)
 		}
 		if _, dup := index[nd.Name]; dup {
-			return nil, fmt.Errorf("matrixgraph: duplicate node name %q", nd.Name)
+			return nil, fmt.Errorf("graphval: duplicate node name %q", nd.Name)
 		}
 		names[i] = nd.Name
 		index[nd.Name] = i
@@ -91,11 +91,11 @@ func New(nodes []Node, edges []Edge) (*Graph, error) {
 	for _, e := range edges {
 		from, ok := index[e.From]
 		if !ok {
-			return nil, fmt.Errorf("matrixgraph: edge references unknown source node %q", e.From)
+			return nil, fmt.Errorf("graphval: edge references unknown source node %q", e.From)
 		}
 		to, ok := index[e.To]
 		if !ok {
-			return nil, fmt.Errorf("matrixgraph: edge references unknown target node %q", e.To)
+			return nil, fmt.Errorf("graphval: edge references unknown target node %q", e.To)
 		}
 		a.Set(from, to, 1)
 	}

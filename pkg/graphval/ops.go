@@ -1,4 +1,4 @@
-package matrixgraph
+package graphval
 
 import (
 	"fmt"
@@ -333,7 +333,7 @@ func (g *Graph) CycleNodes(k int) []int {
 // item node names, and producer→item edges — it returns the names of items that
 // no producer touches (zero incoming edges), sorted ascending.
 //
-// The caller speaks only in names: matrixgraph builds the rectangular 0/1
+// The caller speaks only in names: graphval builds the rectangular 0/1
 // incidence matrix internally and computes the column-sum vector 𝟙ᵀ·M,
 // thresholded at zero. Item names must be unique; an empty item set returns no
 // items. An edge whose From is not a known producer or whose To is not a known
@@ -342,20 +342,20 @@ func DeadItems(producers, items []string, edges []Edge) ([]string, error) {
 	prodIdx := make(map[string]int, len(producers))
 	for i, p := range producers {
 		if p == "" {
-			return nil, fmt.Errorf("matrixgraph: producer %d has an empty name", i)
+			return nil, fmt.Errorf("graphval: producer %d has an empty name", i)
 		}
 		if _, dup := prodIdx[p]; dup {
-			return nil, fmt.Errorf("matrixgraph: duplicate producer name %q", p)
+			return nil, fmt.Errorf("graphval: duplicate producer name %q", p)
 		}
 		prodIdx[p] = i
 	}
 	itemIdx := make(map[string]int, len(items))
 	for j, it := range items {
 		if it == "" {
-			return nil, fmt.Errorf("matrixgraph: item %d has an empty name", j)
+			return nil, fmt.Errorf("graphval: item %d has an empty name", j)
 		}
 		if _, dup := itemIdx[it]; dup {
-			return nil, fmt.Errorf("matrixgraph: duplicate item name %q", it)
+			return nil, fmt.Errorf("graphval: duplicate item name %q", it)
 		}
 		itemIdx[it] = j
 	}
@@ -370,11 +370,11 @@ func DeadItems(producers, items []string, edges []Edge) ([]string, error) {
 	for _, e := range edges {
 		p, ok := prodIdx[e.From]
 		if !ok {
-			return nil, fmt.Errorf("matrixgraph: edge references unknown producer %q", e.From)
+			return nil, fmt.Errorf("graphval: edge references unknown producer %q", e.From)
 		}
 		it, ok := itemIdx[e.To]
 		if !ok {
-			return nil, fmt.Errorf("matrixgraph: edge references unknown item %q", e.To)
+			return nil, fmt.Errorf("graphval: edge references unknown item %q", e.To)
 		}
 		M.Set(p, it, 1)
 	}

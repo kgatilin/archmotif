@@ -1,4 +1,4 @@
-package matrixgraph
+package graphval
 
 import (
 	"io"
