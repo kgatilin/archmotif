@@ -1,83 +1,106 @@
-// Package matrixgraph is a public, graph-agnostic matrix-algebra validation
-// library. It operates purely on a caller-built adjacency matrix plus
-// optional per-node string attributes and knows nothing about Go source,
-// events, kinds, or any particular ingestion pipeline.
+// Package matrixgraph is a public, graph-in matrix-algebra validation library.
+// The caller hands over a directed graph — named nodes (with optional string
+// attributes) and directed edges between node names — and matrixgraph builds
+// the dense adjacency matrix internally and runs every validator as linear
+// algebra over it.
 //
-// Every operation is expressed as linear algebra over the dense adjacency
-// matrix A (gonum *mat.Dense), never as ad-hoc map traversal. Booleans ride
-// on *mat.Dense as 0/1 values with positivity thresholding, matching the
-// conventions of archmotif's internal matrix validators (Hadamard masks,
-// matrix powers, row/column sums).
+// The caller never sees a matrix. There is no [][]bool and no *mat.Dense
+// anywhere in the public surface: adjacency is a private detail. Callers think
+// in node names; matrixgraph maps names to indices, runs the matrix algebra,
+// and offers both index-based and name-based result accessors.
 //
-// Construction is the caller's job: build names, a 0/1 adjacency, and (if
-// desired) attributes, then call New. The library does not parse anything.
+// Internally every operation is expressed as linear algebra over the dense
+// adjacency matrix A (gonum *mat.Dense), never as ad-hoc map traversal.
+// Booleans ride on *mat.Dense as 0/1 values with positivity thresholding,
+// matching archmotif's internal matrix validators (Hadamard masks, matrix
+// powers, row/column sums).
 //
-//	A[i][j] = 1  means a directed edge i → j.
+//	A[i][j] = 1  means a directed edge From=names[i] → To=names[j].
 package matrixgraph
 
 import (
-	"errors"
+	"fmt"
 
 	"gonum.org/v1/gonum/mat"
 )
 
-// Graph is an immutable directed graph backed by a dense adjacency matrix.
+// Node is a named graph node with optional string attributes. Name identifies
+// the node; it must be unique within a graph. Attrs may be nil.
+type Node struct {
+	Name  string
+	Attrs map[string]string
+}
+
+// Edge is a directed edge between two nodes, referenced by name. From and To
+// must both name a node passed to New (self-edges, From==To, are allowed and
+// significant for cycle/SCC detection).
+type Edge struct {
+	From string
+	To   string
+}
+
+// Graph is an immutable directed graph. The caller builds it from nodes and
+// edges; matrixgraph holds the dense 0/1 adjacency internally and never exposes
+// it.
 //
-// Node identity is positional: index i in [0,N) corresponds to Names[i] and
-// Attrs[i]. All operations return node indices; callers map back to names or
-// attributes via the exported slices.
+// Node identity is positional inside the graph: index i in [0,N) corresponds to
+// the i-th node passed to New. Index-returning operations report these indices;
+// callers map back to names via Name/Names, or use the name-based convenience
+// methods.
 type Graph struct {
 	names []string
+	index map[string]int // node name → index
 	attrs []map[string]string
 	a     *mat.Dense // N×N 0/1 adjacency; A[i][j]=1 means i→j.
 }
 
-// New builds a Graph from caller-supplied data.
+// New builds a Graph from a set of named nodes and directed edges.
 //
-//   - names: node labels, length N. Determines node ordering and N.
-//   - adj:   N×N boolean adjacency; adj[i][j]==true means a directed edge
-//     i→j. Self-edges (adj[i][i]) are preserved — they matter for SCC and
-//     cycle detection.
-//   - attrs: optional per-node attribute maps. If non-nil it must have
-//     length N. Pass nil to omit attributes; SCCsMissingAttr then treats
-//     every node as having an empty attribute map.
+//   - nodes: the node set. Ordering determines node indices and N. Node names
+//     must be unique; a duplicate name is an error.
+//   - edges: directed edges referencing node names. Every From and To must name
+//     a node in nodes, or New returns an error. Self-edges and duplicate edges
+//     are accepted (a duplicate edge is idempotent in a 0/1 adjacency).
 //
-// New copies all input so the caller may reuse its slices freely. It returns
-// an error on a ragged adjacency or an attrs/names length mismatch.
-func New(names []string, adj [][]bool, attrs []map[string]string) (*Graph, error) {
-	n := len(names)
-	if len(adj) != n {
-		return nil, errors.New("matrixgraph: adjacency row count must equal len(names)")
-	}
-	if attrs != nil && len(attrs) != n {
-		return nil, errors.New("matrixgraph: attrs length must equal len(names) or be nil")
-	}
-	a := mat.NewDense(maxDim(n), maxDim(n), nil)
-	for i := 0; i < n; i++ {
-		if len(adj[i]) != n {
-			return nil, errors.New("matrixgraph: adjacency must be square (N×N)")
+// New copies all input so the caller may reuse its slices and maps freely. The
+// adjacency matrix is built internally and is never exposed.
+func New(nodes []Node, edges []Edge) (*Graph, error) {
+	n := len(nodes)
+	names := make([]string, n)
+	index := make(map[string]int, n)
+	attrs := make([]map[string]string, n)
+	for i, nd := range nodes {
+		if nd.Name == "" {
+			return nil, fmt.Errorf("matrixgraph: node %d has an empty name", i)
 		}
-		for j := 0; j < n; j++ {
-			if adj[i][j] {
-				a.Set(i, j, 1)
-			}
+		if _, dup := index[nd.Name]; dup {
+			return nil, fmt.Errorf("matrixgraph: duplicate node name %q", nd.Name)
 		}
-	}
-	g := &Graph{
-		names: append([]string(nil), names...),
-		a:     a,
-	}
-	if attrs != nil {
-		g.attrs = make([]map[string]string, n)
-		for i, m := range attrs {
-			cp := make(map[string]string, len(m))
-			for k, v := range m {
+		names[i] = nd.Name
+		index[nd.Name] = i
+		if nd.Attrs != nil {
+			cp := make(map[string]string, len(nd.Attrs))
+			for k, v := range nd.Attrs {
 				cp[k] = v
 			}
-			g.attrs[i] = cp
+			attrs[i] = cp
 		}
 	}
-	return g, nil
+
+	a := mat.NewDense(maxDim(n), maxDim(n), nil)
+	for _, e := range edges {
+		from, ok := index[e.From]
+		if !ok {
+			return nil, fmt.Errorf("matrixgraph: edge references unknown source node %q", e.From)
+		}
+		to, ok := index[e.To]
+		if !ok {
+			return nil, fmt.Errorf("matrixgraph: edge references unknown target node %q", e.To)
+		}
+		a.Set(from, to, 1)
+	}
+
+	return &Graph{names: names, index: index, attrs: attrs, a: a}, nil
 }
 
 // maxDim guards gonum's NewDense, which panics on zero dimensions. A 0-node
@@ -93,14 +116,41 @@ func maxDim(n int) int {
 // N returns the number of nodes.
 func (g *Graph) N() int { return len(g.names) }
 
-// Names returns a copy of the node labels in index order.
+// Names returns a copy of the node names in index order.
 func (g *Graph) Names() []string { return append([]string(nil), g.names...) }
 
+// Name returns the name of node i, or "" if i is out of range.
+func (g *Graph) Name(i int) string {
+	if i < 0 || i >= len(g.names) {
+		return ""
+	}
+	return g.names[i]
+}
+
+// Index returns the index of the node with the given name and whether it
+// exists.
+func (g *Graph) Index(name string) (int, bool) {
+	i, ok := g.index[name]
+	return i, ok
+}
+
+// indicesToNames maps a slice of node indices to their names, dropping any
+// out-of-range index. Always returns a non-nil slice for a non-nil input.
+func (g *Graph) indicesToNames(idx []int) []string {
+	out := make([]string, 0, len(idx))
+	for _, i := range idx {
+		if i >= 0 && i < len(g.names) {
+			out = append(out, g.names[i])
+		}
+	}
+	return out
+}
+
 // Attrs returns the attribute map for node i, or an empty (non-nil) map when
-// the graph was built without attributes or the node had none. The returned
-// map is a copy; mutating it does not affect the graph.
+// the node had none. The returned map is a copy; mutating it does not affect
+// the graph.
 func (g *Graph) Attrs(i int) map[string]string {
-	if g.attrs == nil || i < 0 || i >= len(g.attrs) || g.attrs[i] == nil {
+	if i < 0 || i >= len(g.attrs) || g.attrs[i] == nil {
 		return map[string]string{}
 	}
 	cp := make(map[string]string, len(g.attrs[i]))
@@ -108,18 +158,4 @@ func (g *Graph) Attrs(i int) map[string]string {
 		cp[k] = v
 	}
 	return cp
-}
-
-// Adjacency returns a fresh copy of the N×N 0/1 adjacency matrix. The copy is
-// owned by the caller. For a zero-node graph the result is a 0×0 dense.
-func (g *Graph) Adjacency() *mat.Dense {
-	n := g.N()
-	if n == 0 {
-		// gonum's NewDense panics on zero dimensions; a zero-value Dense
-		// reports 0×0 dims, which is the right empty representation.
-		return &mat.Dense{}
-	}
-	out := mat.NewDense(n, n, nil)
-	out.Copy(g.a.Slice(0, n, 0, n))
-	return out
 }

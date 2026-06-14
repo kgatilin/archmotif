@@ -1,13 +1,13 @@
 package matrixgraph
 
 import (
-	"errors"
+	"fmt"
 	"sort"
 
 	"gonum.org/v1/gonum/mat"
 )
 
-// Closure returns the boolean transitive closure A* of the adjacency, as a
+// closure returns the boolean transitive closure A* of the adjacency, as a
 // 0/1 *mat.Dense. A*[i][j] = 1 iff there is a directed path of length ≥ 1
 // from i to j (j is reachable from i). The reflexive case A*[i][i] is set
 // only when i actually sits on a cycle (a path i→…→i of length ≥ 1); it is
@@ -20,9 +20,9 @@ import (
 // at most N iterations, matching (I ∨ A)^(N-1) reachability without forcing
 // the reflexive diagonal.
 //
-// This operation does not exist in archmotif's internal validators; it is the
-// key addition this package contributes. It underpins ReachableFrom and SCCs.
-func (g *Graph) Closure() *mat.Dense {
+// It is unexported: the *mat.Dense closure is a private detail. ReachableFrom
+// and SCCs expose its results in node-index / node-name terms instead.
+func (g *Graph) closure() *mat.Dense {
 	n := g.N()
 	if n == 0 {
 		// gonum's NewDense panics on zero dimensions; a zero-value Dense
@@ -65,7 +65,7 @@ func (g *Graph) ReachableFrom(roots []int) []bool {
 	if n == 0 {
 		return out
 	}
-	star := g.Closure()
+	star := g.closure()
 	for _, r := range roots {
 		if r < 0 || r >= n {
 			continue
@@ -77,6 +77,28 @@ func (g *Graph) ReachableFrom(roots []int) []bool {
 			}
 		}
 	}
+	return out
+}
+
+// ReachableFromNames is the name-based companion to ReachableFrom: given root
+// node names, it returns the names of every reachable node (each root reaches
+// itself), sorted ascending. Unknown root names are ignored. This is the
+// accessor reflex uses, since reflex works in node names, not indices.
+func (g *Graph) ReachableFromNames(roots []string) []string {
+	idx := make([]int, 0, len(roots))
+	for _, name := range roots {
+		if i, ok := g.index[name]; ok {
+			idx = append(idx, i)
+		}
+	}
+	mask := g.ReachableFrom(idx)
+	out := make([]string, 0)
+	for i, ok := range mask {
+		if ok {
+			out = append(out, g.names[i])
+		}
+	}
+	sort.Strings(out)
 	return out
 }
 
@@ -92,7 +114,7 @@ func (g *Graph) SCCs() [][]int {
 	if n == 0 {
 		return [][]int{}
 	}
-	star := g.Closure()
+	star := g.closure()
 	assigned := make([]bool, n)
 	var comps [][]int
 	for i := 0; i < n; i++ {
@@ -168,6 +190,35 @@ func (g *Graph) SCCsMissingAttr(pred func(attrs map[string]string) bool) [][]int
 		if !satisfied {
 			out = append(out, comp)
 		}
+	}
+	return out
+}
+
+// NamesOf maps a group of node indices (e.g. one SCC, or Sinks/Sources/
+// CycleNodes output) to their node names, preserving order and dropping any
+// out-of-range index. It is the bridge for callers like reflex that reason in
+// names: g.NamesOf(g.CycleNodes(3)), g.NamesOf(g.Sinks()), etc.
+func (g *Graph) NamesOf(idx []int) []string { return g.indicesToNames(idx) }
+
+// SCCsAsNames returns the same components as SCCs but with node names instead
+// of indices. Each component preserves SCCs' ascending-by-index order.
+func (g *Graph) SCCsAsNames() [][]string { return g.componentsAsNames(g.SCCs()) }
+
+// NonTrivialSCCsAsNames is the name-based companion to NonTrivialSCCs.
+func (g *Graph) NonTrivialSCCsAsNames() [][]string {
+	return g.componentsAsNames(g.NonTrivialSCCs())
+}
+
+// SCCsMissingAttrAsNames is the name-based companion to SCCsMissingAttr.
+func (g *Graph) SCCsMissingAttrAsNames(pred func(attrs map[string]string) bool) [][]string {
+	return g.componentsAsNames(g.SCCsMissingAttr(pred))
+}
+
+// componentsAsNames maps each component of indices to a component of names.
+func (g *Graph) componentsAsNames(comps [][]int) [][]string {
+	out := make([][]string, 0, len(comps))
+	for _, c := range comps {
+		out = append(out, g.indicesToNames(c))
 	}
 	return out
 }
@@ -277,48 +328,77 @@ func (g *Graph) CycleNodes(k int) []int {
 	return out
 }
 
-// DeadColumns operates on a rectangular 0/1 incidence matrix M (rows ×
-// cols) and returns the column indices whose entries are all zero — items
-// that no row touches. It is the generic "dead-column" / column-sum-zero
-// detector: with rows = producers and cols = consumable items, a dead column
-// is an item nobody consumes.
+// DeadItems is the graph-in form of the "dead-column" / column-sum-zero
+// detector. Given a bipartite graph — a set of producer node names, a set of
+// item node names, and producer→item edges — it returns the names of items that
+// no producer touches (zero incoming edges), sorted ascending.
 //
-// It is graph-agnostic: it imposes no notion of "kind" or "node". The result
-// indices are sorted ascending. An empty matrix (0 rows or 0 cols) returns no
-// columns. Computed as the column-sum vector 𝟙ᵀ·M, then thresholded at zero.
-func DeadColumns(m [][]bool) ([]int, error) {
-	rows := len(m)
-	if rows == 0 {
-		return nil, nil
+// The caller speaks only in names: matrixgraph builds the rectangular 0/1
+// incidence matrix internally and computes the column-sum vector 𝟙ᵀ·M,
+// thresholded at zero. Item names must be unique; an empty item set returns no
+// items. An edge whose From is not a known producer or whose To is not a known
+// item is rejected.
+func DeadItems(producers, items []string, edges []Edge) ([]string, error) {
+	prodIdx := make(map[string]int, len(producers))
+	for i, p := range producers {
+		if p == "" {
+			return nil, fmt.Errorf("matrixgraph: producer %d has an empty name", i)
+		}
+		if _, dup := prodIdx[p]; dup {
+			return nil, fmt.Errorf("matrixgraph: duplicate producer name %q", p)
+		}
+		prodIdx[p] = i
 	}
-	cols := len(m[0])
+	itemIdx := make(map[string]int, len(items))
+	for j, it := range items {
+		if it == "" {
+			return nil, fmt.Errorf("matrixgraph: item %d has an empty name", j)
+		}
+		if _, dup := itemIdx[it]; dup {
+			return nil, fmt.Errorf("matrixgraph: duplicate item name %q", it)
+		}
+		itemIdx[it] = j
+	}
+	rows := len(producers)
+	cols := len(items)
 	if cols == 0 {
 		return nil, nil
 	}
-	M := mat.NewDense(rows, cols, nil)
-	for i := 0; i < rows; i++ {
-		if len(m[i]) != cols {
-			return nil, errors.New("matrixgraph: incidence matrix must be rectangular")
+
+	// Incidence M[p][i] = 1 iff producer p touches item i.
+	M := mat.NewDense(maxDim(rows), maxDim(cols), nil)
+	for _, e := range edges {
+		p, ok := prodIdx[e.From]
+		if !ok {
+			return nil, fmt.Errorf("matrixgraph: edge references unknown producer %q", e.From)
 		}
-		for j := 0; j < cols; j++ {
-			if m[i][j] {
-				M.Set(i, j, 1)
-			}
+		it, ok := itemIdx[e.To]
+		if !ok {
+			return nil, fmt.Errorf("matrixgraph: edge references unknown item %q", e.To)
 		}
+		M.Set(p, it, 1)
 	}
+	if rows == 0 {
+		// No producers: every item is dead.
+		out := append([]string(nil), items...)
+		sort.Strings(out)
+		return out, nil
+	}
+
 	// colSum = 𝟙ᵀ · M  (1×cols row vector of per-column totals).
 	onesRow := mat.NewDense(1, rows, nil)
 	for i := 0; i < rows; i++ {
 		onesRow.Set(0, i, 1)
 	}
 	colSum := mat.NewDense(1, cols, nil)
-	colSum.Mul(onesRow, M)
-	var out []int
+	colSum.Mul(onesRow, M.Slice(0, rows, 0, cols))
+	var out []string
 	for j := 0; j < cols; j++ {
 		if colSum.At(0, j) == 0 {
-			out = append(out, j)
+			out = append(out, items[j])
 		}
 	}
+	sort.Strings(out)
 	return out, nil
 }
 
