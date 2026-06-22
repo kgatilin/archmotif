@@ -34,7 +34,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			"  pkg-graph  project typed graph JSON to package GraphML\n"+
 			"  quotient   collapse a graph by a node attribute (--partition)\n"+
 			"  policy     check a dependency policy, list violations\n"+
-			"  diff       focus on a branch's added subgraph (BEFORE AFTER)\n\n")
+			"  diff       focus on a branch's added subgraph (BEFORE AFTER)\n"+
+			"  ppr        personalized PageRank diffusion ranking from --seeds\n\n")
 		_, _ = fmt.Fprintf(stderr, "Flags:\n")
 		fs.PrintDefaults()
 		_, _ = fmt.Fprintf(stderr, "\nSee https://github.com/kgatilin/archmotif for the roadmap.\n")
@@ -128,6 +129,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runQuotient(rest, stdout, stderr)
 	case "curvature":
 		return runCurvature(rest, stdout, stderr)
+	case "ppr":
+		return runPPR(rest, stdout, stderr)
 	}
 	_, _ = fmt.Fprintf(stderr, "archmotif: command %q not implemented yet (Stage 0 scaffold)\n", cmd)
 	return 1
