@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"sort"
 
 	mgraph "github.com/kgatilin/archmotif/internal/graph"
@@ -42,6 +41,8 @@ func runCommunities(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	format := fs.String("format", "json", "output format: json|text")
 	resolution := fs.Float64("resolution", 1.0, "Louvain modularity resolution (higher → more, smaller communities)")
+	foreign := fs.Bool("foreign", false, "include foreign (stdlib/3rd-party) nodes")
+	granularity := fs.String("granularity", granularitySymbol, "node granularity: symbol|package")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(stderr, "Usage:\n  archmotif communities [flags] <graph.json>\n\nFlags:\n")
 		fs.PrintDefaults()
@@ -64,16 +65,15 @@ func runCommunities(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "archmotif communities: --resolution must be > 0 (got %v)\n", *resolution)
 		return 2
 	}
+	if !validGranularity(*granularity) {
+		_, _ = fmt.Fprintf(stderr, "archmotif communities: --granularity=%q (want: symbol|package)\n", *granularity)
+		return 2
+	}
 
 	path := fs.Arg(0)
-	raw, err := os.ReadFile(path)
+	doc, err := loadFilteredGraph(path, graphFilter{IncludeForeign: *foreign, Granularity: *granularity})
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "archmotif communities: read %s: %v\n", path, err)
-		return 1
-	}
-	var doc mgraph.JSON
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		_, _ = fmt.Fprintf(stderr, "archmotif communities: parse %s: %v\n", path, err)
+		_, _ = fmt.Fprintf(stderr, "archmotif communities: %v\n", err)
 		return 1
 	}
 

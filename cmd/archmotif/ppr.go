@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 
@@ -46,6 +45,8 @@ func runPPR(args []string, stdout, stderr io.Writer) int {
 	restart := fs.Float64("restart", graphval.DefaultRestart, "teleport probability α ∈ (0,1] (damping = 1-α)")
 	top := fs.Int("top", 0, "keep only the top N ranked nodes (0 = all)")
 	format := fs.String("format", "json", "output format: json|text")
+	foreign := fs.Bool("foreign", false, "include foreign (stdlib/3rd-party) nodes")
+	granularity := fs.String("granularity", granularitySymbol, "node granularity: symbol|package")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(stderr, "Usage:\n  archmotif ppr [flags] <graph.json>\n\nFlags:\n")
 		fs.PrintDefaults()
@@ -72,16 +73,15 @@ func runPPR(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "archmotif ppr: --top must be ≥ 0 (got %d)\n", *top)
 		return 2
 	}
+	if !validGranularity(*granularity) {
+		_, _ = fmt.Fprintf(stderr, "archmotif ppr: --granularity=%q (want: symbol|package)\n", *granularity)
+		return 2
+	}
 
 	path := fs.Arg(0)
-	raw, err := os.ReadFile(path)
+	doc, err := loadFilteredGraph(path, graphFilter{IncludeForeign: *foreign, Granularity: *granularity})
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "archmotif ppr: read %s: %v\n", path, err)
-		return 1
-	}
-	var doc mgraph.JSON
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		_, _ = fmt.Fprintf(stderr, "archmotif ppr: parse %s: %v\n", path, err)
+		_, _ = fmt.Fprintf(stderr, "archmotif ppr: %v\n", err)
 		return 1
 	}
 
