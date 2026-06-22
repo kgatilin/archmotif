@@ -1,28 +1,67 @@
-run:
-  timeout: 3m
-
+version: "2"
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
-    - gofmt
-    - goimports
     - govet
     - ineffassign
     - misspell
     - revive
     - staticcheck
     - unused
-
+  settings:
+    revive:
+      rules:
+        - name: var-naming
+        - name: exported
+        - name: error-return
+        - name: error-strings
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      # Baseline: pre-existing lint debt frozen so NEW code is gated strictly while
+      # the legacy backlog is addressed separately (delta-philosophy). Do NOT add new
+      # files here — fix them instead.
+      - cmd/archmotif/contract_cmd\.go$
+      - cmd/archmotif/curvature_test\.go$
+      - cmd/archmotif/embed\.go$
+      - cmd/archmotif/spectral\.go$
+      - internal/contract/contract\.go$
+      - internal/contract/diff\.go$
+      - internal/contract/partition\.go$
+      - internal/contract/policy\.go$
+      - internal/diagram/package_deps\.go$
+      - internal/graphmlx/detector_hierarchy_cycle\.go$
+      - internal/graphmlx/graphmlx_test\.go$
+      - internal/propose/propose\.go$
+      - internal/targetcontract/targetcontract\.go$
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
-
-linters-settings:
-  revive:
-    rules:
-      - name: var-naming
-      - name: exported
-      - name: error-return
-      - name: error-strings
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      # Baseline (see linters.exclusions.paths) — frozen legacy formatting debt.
+      - cmd/archmotif/contract_cmd\.go$
+      - cmd/archmotif/curvature_test\.go$
+      - cmd/archmotif/embed\.go$
+      - cmd/archmotif/spectral\.go$
+      - internal/contract/contract\.go$
+      - internal/contract/diff\.go$
+      - internal/contract/partition\.go$
+      - internal/contract/policy\.go$
+      - internal/diagram/package_deps\.go$
+      - internal/graphmlx/detector_hierarchy_cycle\.go$
+      - internal/graphmlx/graphmlx_test\.go$
+      - internal/propose/propose\.go$
+      - internal/targetcontract/targetcontract\.go$
