@@ -84,3 +84,28 @@ func TestRunPPRMissingArgIsUsageError(t *testing.T) {
 		t.Errorf("no args: exit %d, want 2", code)
 	}
 }
+
+func TestRunPPRUndirectedSurfacesInboundNode(t *testing.T) {
+	path := writePPRGraph(t)
+	directed := runPPRJSON(t, "--seeds", "a", path)
+	undirected := runPPRJSON(t, "--seeds", "a", "--undirected", path)
+
+	if directed.Undirected || !undirected.Undirected {
+		t.Errorf("report.Undirected: directed=%v undirected=%v", directed.Undirected, undirected.Undirected)
+	}
+	score := func(rep pprReport, name string) float64 {
+		for _, s := range rep.Ranking {
+			if s.Name == name {
+				return s.Score
+			}
+		}
+		return -1
+	}
+	// d→a only: directed leaves d at ~0, undirected lifts it above 0.
+	if score(directed, "d") > 1e-9 {
+		t.Errorf("directed d = %v, want ~0", score(directed, "d"))
+	}
+	if score(undirected, "d") <= 1e-6 {
+		t.Errorf("undirected d = %v, want > 0", score(undirected, "d"))
+	}
+}

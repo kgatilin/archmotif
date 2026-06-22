@@ -47,6 +47,7 @@ func runPPR(args []string, stdout, stderr io.Writer) int {
 	format := fs.String("format", "json", "output format: json|text")
 	foreign := fs.Bool("foreign", false, "include foreign (stdlib/3rd-party) nodes")
 	granularity := fs.String("granularity", granularitySymbol, "node granularity: symbol|package")
+	undirected := fs.Bool("undirected", false, "treat edges as undirected (walk i→j and j→i)")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(stderr, "Usage:\n  archmotif ppr [flags] <graph.json>\n\nFlags:\n")
 		fs.PrintDefaults()
@@ -85,7 +86,7 @@ func runPPR(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	report, err := computePPRReport(doc, parseSeeds(*seedsFlag), *restart, *top)
+	report, err := computePPRReport(doc, parseSeeds(*seedsFlag), *restart, *top, *undirected)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "archmotif ppr: %v\n", err)
 		return 1
@@ -110,6 +111,7 @@ type pprReport struct {
 	Seeds        []string         `json:"seeds"`
 	UnknownSeeds []string         `json:"unknown_seeds"`
 	Restart      float64          `json:"restart"`
+	Undirected   bool             `json:"undirected"`
 	N            int              `json:"n"`
 	Ranking      []graphval.Score `json:"ranking"`
 }
@@ -119,11 +121,12 @@ type pprReport struct {
 // occurrence and edges with an endpoint outside the node set are dropped
 // (same forgiving projection convention as communities.go), so an arbitrary
 // exported graph never fails the stricter graphval.New contract.
-func computePPRReport(doc mgraph.JSON, seeds []string, restart float64, top int) (pprReport, error) {
+func computePPRReport(doc mgraph.JSON, seeds []string, restart float64, top int, undirected bool) (pprReport, error) {
 	report := pprReport{
 		Seeds:        seeds,
 		UnknownSeeds: []string{},
 		Restart:      restart,
+		Undirected:   undirected,
 		Ranking:      []graphval.Score{},
 	}
 
@@ -162,7 +165,7 @@ func computePPRReport(doc mgraph.JSON, seeds []string, restart float64, top int)
 	}
 	sort.Strings(report.UnknownSeeds)
 
-	ranking := g.PersonalizedPageRankByNames(seeds, restart)
+	ranking := g.PersonalizedPageRankByNames(seeds, restart, undirected)
 	if top > 0 && top < len(ranking) {
 		ranking = ranking[:top]
 	}
@@ -198,7 +201,11 @@ func writePPRText(w io.Writer, r pprReport) {
 	if len(r.UnknownSeeds) > 0 {
 		_, _ = fmt.Fprintf(w, "  unknown seeds: %s\n", strings.Join(r.UnknownSeeds, ", "))
 	}
-	_, _ = fmt.Fprintf(w, "  restart: %.4f   nodes: %d\n", r.Restart, r.N)
+	mode := "directed"
+	if r.Undirected {
+		mode = "undirected"
+	}
+	_, _ = fmt.Fprintf(w, "  restart: %.4f   nodes: %d   mode: %s\n", r.Restart, r.N, mode)
 	for i, sc := range r.Ranking {
 		_, _ = fmt.Fprintf(w, "  %3d. %-40s %.6f\n", i+1, sc.Name, sc.Score)
 	}

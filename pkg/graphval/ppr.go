@@ -39,13 +39,17 @@ const (
 //     global PageRank.
 //   - restart: teleport probability α ∈ (0,1] (damping = 1−α). α ≤ 0 is replaced
 //     by DefaultRestart; α > 1 is clamped to 1.
+//   - undirected: when true, each directed edge i→j is also walked as j→i (the
+//     adjacency is symmetrised before normalisation). Use this for proximity
+//     ranking where "who depends on me" matters as much as "what I depend on" —
+//     e.g. a node reached only via an inbound port edge still receives mass.
 //
 // It is the fixpoint of r ← (1−α)·Pᵀr + ((1−α)·d + α)·s, where P is the
-// row-stochastic transition matrix (A with each row divided by its out-degree),
-// and d is the probability mass sitting on dangling (out-degree-0) nodes,
-// redistributed through s so r stays a distribution. Iterates to L1 convergence
-// (tol 1e-10) or pprMaxIter steps. Deterministic.
-func (g *Graph) PersonalizedPageRank(seeds []int, restart float64) []float64 {
+// row-stochastic transition matrix (the effective adjacency with each row
+// divided by its out-degree), and d is the probability mass sitting on dangling
+// (out-degree-0) nodes, redistributed through s so r stays a distribution.
+// Iterates to L1 convergence (tol 1e-10) or pprMaxIter steps. Deterministic.
+func (g *Graph) PersonalizedPageRank(seeds []int, restart float64, undirected bool) []float64 {
 	n := g.N()
 	if n == 0 {
 		return nil
@@ -81,15 +85,25 @@ func (g *Graph) PersonalizedPageRank(seeds []int, restart float64) []float64 {
 		}
 	}
 
-	// Row-stochastic transition P[i][j] = A[i][j]/outdeg(i). Dangling rows
-	// (out-degree 0) stay zero; their mass is teleported via the d term.
+	// edge reports whether the surfer may step i→j: a direct edge, plus the
+	// reverse edge when undirected symmetrisation is requested.
 	a := g.a.Slice(0, n, 0, n)
+	edge := func(i, j int) bool {
+		if a.At(i, j) > 0 {
+			return true
+		}
+		return undirected && a.At(j, i) > 0
+	}
+
+	// Row-stochastic transition P[i][j] = 1/outdeg(i) over the effective
+	// adjacency. Dangling rows (out-degree 0) stay zero; their mass is
+	// teleported via the d term.
 	P := mat.NewDense(n, n, nil)
 	dangling := make([]bool, n)
 	for i := 0; i < n; i++ {
 		deg := 0.0
 		for j := 0; j < n; j++ {
-			if a.At(i, j) > 0 {
+			if edge(i, j) {
 				deg++
 			}
 		}
@@ -99,7 +113,7 @@ func (g *Graph) PersonalizedPageRank(seeds []int, restart float64) []float64 {
 		}
 		inv := 1.0 / deg
 		for j := 0; j < n; j++ {
-			if a.At(i, j) > 0 {
+			if edge(i, j) {
 				P.Set(i, j, inv)
 			}
 		}
@@ -149,15 +163,16 @@ func (g *Graph) PersonalizedPageRank(seeds []int, restart float64) []float64 {
 // are ignored; if none are known the result is global PageRank), then returns
 // every node as a Score sorted by score descending, ties broken by name
 // ascending for determinism. This is the accessor callers like archai use to
-// rank search neighbourhoods by structural proximity to query hits.
-func (g *Graph) PersonalizedPageRankByNames(seeds []string, restart float64) []Score {
+// rank search neighbourhoods by structural proximity to query hits. See
+// PersonalizedPageRank for the undirected flag.
+func (g *Graph) PersonalizedPageRankByNames(seeds []string, restart float64, undirected bool) []Score {
 	idx := make([]int, 0, len(seeds))
 	for _, name := range seeds {
 		if i, ok := g.index[name]; ok {
 			idx = append(idx, i)
 		}
 	}
-	scores := g.PersonalizedPageRank(idx, restart)
+	scores := g.PersonalizedPageRank(idx, restart, undirected)
 	out := make([]Score, len(scores))
 	for i, sc := range scores {
 		out[i] = Score{Name: g.names[i], Score: sc}
