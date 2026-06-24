@@ -162,6 +162,26 @@ func (b *Builder) AddFunction(id, packageID string) error {
 	return nil
 }
 
+// AddFile inserts a NodeFile nested under packageID via EdgeContains. File
+// nodes model the physical source layout (which declarations live in which
+// file); link declarations to a file with AddContains so per-file structure —
+// e.g. how many symbols a single file carries — becomes analyzable.
+func (b *Builder) AddFile(id, packageID string) error {
+	if err := requireID("AddFile", "id", id); err != nil {
+		return err
+	}
+	if err := requireParent(b.g, "AddFile", "packageID", packageID, mgraph.NodePackage); err != nil {
+		return err
+	}
+	if _, inserted := b.g.AddNode(mgraph.Node{ID: id, Kind: mgraph.NodeFile, Name: id}); !inserted {
+		return fmt.Errorf("archmotifimport: AddFile: id %q already exists", id)
+	}
+	if _, err := b.g.AddEdge(mgraph.Edge{From: packageID, To: id, Kind: mgraph.EdgeContains}); err != nil {
+		return fmt.Errorf("archmotifimport: AddFile: link to package: %w", err)
+	}
+	return nil
+}
+
 // AddMethod inserts a NodeMethod nested under parentTypeID via EdgeContains.
 func (b *Builder) AddMethod(id, parentTypeID string) error {
 	if err := requireID("AddMethod", "id", id); err != nil {
