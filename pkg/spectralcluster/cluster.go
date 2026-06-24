@@ -53,12 +53,20 @@ type ClusterResult struct {
 	BoundarySymbols []string `json:"boundary_symbols"`
 	// CutQuality measures the clustering quality.
 	CutQuality CutQuality `json:"cut_quality"`
+	// Eigenvalues are the smallest Laplacian eigenvalues (ascending), so a
+	// caller can see the spectrum the K choice was read from.
+	Eigenvalues []float64 `json:"eigenvalues"`
+	// Modularity is the Newman modularity of the chosen partition (higher =
+	// stronger community structure; ~0 or below = no real modules / hairball).
+	Modularity float64 `json:"modularity"`
 }
 
 // KCandidate describes a potential K value with its eigengap strength.
 type KCandidate struct {
 	K          int     `json:"k"`
-	GapRatio   float64 `json:"gap_ratio"`
+	Gap        float64 `json:"gap"`        // absolute eigengap λ_{k+1} − λ_k (selection metric)
+	GapRatio   float64 `json:"gap_ratio"`  // λ_{k+1} / λ_k (reported for context only)
+	Modularity float64 `json:"modularity"` // modularity of the k-cluster partition (0 if not evaluated)
 	Confidence string  `json:"confidence"` // "strong", "moderate", "weak"
 }
 
@@ -118,13 +126,16 @@ func SpectralCluster(g *Graph, opts ClusterOptions) (ClusterResult, error) {
 		return ClusterResult{}, fmt.Errorf("spectralcluster: eigendecomposition failed")
 	}
 
-	// Step 4: Determine K.
-	k := opts.K
+	// Step 4: Determine K. Auto-K reads the eigengap for candidates, then
+	// validates them by clustering quality (modularity) so it does not get
+	// trapped by the near-zero instability that biased the old ratio heuristic
+	// toward tiny K.
+	numComponents := countComponents(eigen.Values)
 	candidates := computeKCandidates(eigen.Values)
+	k := opts.K
 	kSource := "explicit"
 	if k <= 0 {
-		// Auto-K via eigengap.
-		k = autoSelectK(eigen.Values, candidates)
+		k = selectKByModularity(eigen, uv, candidates, numComponents, nodeCount)
 		kSource = "auto"
 	}
 
@@ -135,9 +146,6 @@ func SpectralCluster(g *Graph, opts ClusterOptions) (ClusterResult, error) {
 	if k < 1 {
 		k = 1
 	}
-
-	// Check for disconnected components (multiple near-zero eigenvalues).
-	numComponents := countComponents(eigen.Values)
 	if k < numComponents {
 		k = numComponents
 	}
@@ -154,8 +162,9 @@ func SpectralCluster(g *Graph, opts ClusterOptions) (ClusterResult, error) {
 	// Step 8: Identify boundary symbols (Fiedler vector near zero).
 	boundary := findBoundarySymbols(eigen, uv.Sort)
 
-	// Step 9: Compute cut quality.
+	// Step 9: Compute cut quality and modularity of the chosen partition.
 	cutQuality := computeCutQuality(subgraph, labels, uv)
+	mod := modularity(uv, labels)
 
 	return ClusterResult{
 		ChosenK:         k,
@@ -164,6 +173,8 @@ func SpectralCluster(g *Graph, opts ClusterOptions) (ClusterResult, error) {
 		Clusters:        clusters,
 		BoundarySymbols: boundary,
 		CutQuality:      cutQuality,
+		Eigenvalues:     topEigenvalues(eigen.Values, 24),
+		Modularity:      roundFloat(mod, 4),
 	}, nil
 }
 
@@ -229,14 +240,18 @@ func buildEdgeKindFilter(kinds []string) map[mgraph.EdgeKind]bool {
 	return m
 }
 
-// computeKCandidates finds potential K values based on eigengap ratios.
+// computeKCandidates finds potential K values from the eigengap, ranked by the
+// ABSOLUTE gap δ_k = λ_{k+1} − λ_k rather than the ratio λ_{k+1}/λ_i. Ratios of
+// near-zero eigenvalues are numerically unstable and blow up at the bottom of
+// the spectrum, which biased the old heuristic toward tiny K; absolute gaps do
+// not. Confidence is the gap's size relative to the mean gap.
 func computeKCandidates(eigenvalues []float64) []KCandidate {
 	if len(eigenvalues) < 2 {
 		return nil
 	}
 
-	// Skip near-zero eigenvalues (components).
 	const eps = 1e-9
+	// Skip the near-zero band (one near-zero eigenvalue per component).
 	startIdx := 0
 	for i, v := range eigenvalues {
 		if v > eps {
@@ -248,79 +263,162 @@ func computeKCandidates(eigenvalues []float64) []KCandidate {
 		return nil
 	}
 
-	// Compute gap ratios: λ_{i+1} / λ_i for small eigenvalues.
-	// K = index where the largest gap occurs.
+	maxCheck := len(eigenvalues)
+	if maxCheck > 20 {
+		maxCheck = 20
+	}
+
 	type gap struct {
-		k     int
-		ratio float64
+		k            int
+		delta, ratio float64
 	}
 	gaps := []gap{}
-
-	// Look at the first few eigenvalues (up to 10 or half the spectrum).
-	maxCheck := len(eigenvalues) / 2
-	if maxCheck > 10 {
-		maxCheck = 10
-	}
-	if maxCheck < 2 {
-		maxCheck = 2
-	}
-
-	for i := startIdx; i < startIdx+maxCheck && i < len(eigenvalues)-1; i++ {
+	for i := startIdx; i < maxCheck-1 && i < len(eigenvalues)-1; i++ {
 		prev := eigenvalues[i]
 		next := eigenvalues[i+1]
-		if prev <= eps {
-			continue
+		ratio := 0.0
+		if prev > eps {
+			ratio = next / prev
 		}
-		ratio := next / prev
-		gaps = append(gaps, gap{k: i + 1, ratio: ratio})
+		gaps = append(gaps, gap{k: i + 1, delta: next - prev, ratio: ratio})
+	}
+	if len(gaps) == 0 {
+		return nil
 	}
 
-	// Sort by ratio descending.
+	mean := 0.0
+	for _, g := range gaps {
+		mean += g.delta
+	}
+	mean /= float64(len(gaps))
+
 	sort.Slice(gaps, func(i, j int) bool {
-		return gaps[i].ratio > gaps[j].ratio
+		if gaps[i].delta != gaps[j].delta {
+			return gaps[i].delta > gaps[j].delta
+		}
+		return gaps[i].k < gaps[j].k
 	})
 
-	// Convert to candidates with confidence.
 	candidates := make([]KCandidate, 0, len(gaps))
 	for _, g := range gaps {
 		conf := "weak"
-		if g.ratio > 10.0 {
-			conf = "strong"
-		} else if g.ratio > 3.0 {
-			conf = "moderate"
+		if mean > 0 {
+			switch {
+			case g.delta > 3.0*mean:
+				conf = "strong"
+			case g.delta > 1.8*mean:
+				conf = "moderate"
+			}
 		}
 		candidates = append(candidates, KCandidate{
 			K:          g.k,
+			Gap:        roundFloat(g.delta, 4),
 			GapRatio:   roundFloat(g.ratio, 4),
 			Confidence: conf,
 		})
 	}
-
-	// Limit to top 5.
-	if len(candidates) > 5 {
-		candidates = candidates[:5]
+	if len(candidates) > 6 {
+		candidates = candidates[:6]
 	}
-
 	return candidates
 }
 
-// autoSelectK picks K from the candidates or defaults to 2.
-func autoSelectK(eigenvalues []float64, candidates []KCandidate) int {
-	// If there's a strong candidate, use it.
-	for _, c := range candidates {
-		if c.Confidence == "strong" || c.Confidence == "moderate" {
-			return c.K
+// selectKByModularity clusters at each candidate K and returns the K whose
+// partition has the highest modularity. The eigengap proposes candidates; the
+// clustering quality disambiguates — so a graph with no real structure (a
+// hairball, where every K scores poorly) no longer collapses onto whatever weak
+// gap happened to be largest. Records each evaluated candidate's modularity.
+func selectKByModularity(eigen *spectral.EigenResult, uv spectral.UndirectedView, candidates []KCandidate, numComponents, nodeCount int) int {
+	bestK := 0
+	bestQ := math.Inf(-1)
+	tried := map[int]bool{}
+
+	consider := func(k int) {
+		if k < 1 || k > nodeCount || tried[k] {
+			return
+		}
+		if k < numComponents {
+			return
+		}
+		tried[k] = true
+		labels := spectral.KMeans(extractEmbedding(eigen, k), k, 100)
+		q := modularity(uv, labels)
+		for i := range candidates {
+			if candidates[i].K == k {
+				candidates[i].Modularity = roundFloat(q, 4)
+			}
+		}
+		if q > bestQ {
+			bestQ = q
+			bestK = k
 		}
 	}
-	// If any candidate exists, use the top one.
-	if len(candidates) > 0 {
-		return candidates[0].K
+
+	for _, c := range candidates {
+		consider(c.K)
 	}
-	// Default to 2 if we have enough eigenvalues.
-	if len(eigenvalues) >= 2 {
-		return 2
+	if bestK == 0 {
+		bestK = numComponents
+		if bestK < 2 && nodeCount >= 2 {
+			bestK = 2
+		}
+		if bestK < 1 {
+			bestK = 1
+		}
 	}
-	return 1
+	return bestK
+}
+
+// modularity is the Newman modularity Q of a label assignment over the
+// undirected view that was actually clustered: Q = Σ_c [ L_c/m − (d_c/2m)² ],
+// where L_c is the internal edge count of community c, d_c its total degree,
+// and m the edge count. Q in (~0, 1]; ~0 or below means no community structure.
+func modularity(uv spectral.UndirectedView, labels []int) float64 {
+	clusterOf := make(map[int64]int, len(uv.Sort))
+	for i, sid := range uv.Sort {
+		if i < len(labels) {
+			clusterOf[uv.Idx[sid]] = labels[i]
+		}
+	}
+	deg := map[int]float64{}
+	intra := map[int]float64{}
+	m := 0.0
+	edges := uv.G.Edges()
+	for edges.Next() {
+		e := edges.Edge()
+		cu, oku := clusterOf[e.From().ID()]
+		cv, okv := clusterOf[e.To().ID()]
+		if !oku || !okv {
+			continue
+		}
+		m++
+		deg[cu]++
+		deg[cv]++
+		if cu == cv {
+			intra[cu]++
+		}
+	}
+	if m == 0 {
+		return 0
+	}
+	q := 0.0
+	for c, d := range deg {
+		expect := d / (2 * m)
+		q += intra[c]/m - expect*expect
+	}
+	return q
+}
+
+// topEigenvalues returns the first n eigenvalues (ascending), rounded.
+func topEigenvalues(values []float64, n int) []float64 {
+	if n > len(values) {
+		n = len(values)
+	}
+	out := make([]float64, n)
+	for i := 0; i < n; i++ {
+		out[i] = roundFloat(values[i], 6)
+	}
+	return out
 }
 
 // countComponents counts connected components (eigenvalues near zero).

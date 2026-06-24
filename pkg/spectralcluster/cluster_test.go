@@ -231,3 +231,52 @@ func buildPureClique(n int) *Graph {
 	}
 	return g
 }
+
+// TestModularityAndSpectrumExposed verifies the new auto-K outputs: a clear
+// two-community graph scores high modularity, exposes the eigenvalue spectrum,
+// and its candidates carry the absolute gap.
+func TestModularityAndSpectrumExposed(t *testing.T) {
+	g := buildTwoCliques()
+
+	result, err := SpectralCluster(g, DefaultOptions())
+	if err != nil {
+		t.Fatalf("SpectralCluster failed: %v", err)
+	}
+	if result.Modularity <= 0.2 {
+		t.Errorf("two-clique modularity = %v, want > 0.2 (clear community structure)", result.Modularity)
+	}
+	if len(result.Eigenvalues) == 0 {
+		t.Error("eigenvalues not exposed")
+	}
+	// Eigenvalues must be ascending (smallest first).
+	for i := 1; i < len(result.Eigenvalues); i++ {
+		if result.Eigenvalues[i]+1e-9 < result.Eigenvalues[i-1] {
+			t.Errorf("eigenvalues not ascending at %d: %v", i, result.Eigenvalues)
+			break
+		}
+	}
+	// At least one candidate should report the absolute gap.
+	sawGap := false
+	for _, c := range result.Candidates {
+		if c.Gap > 0 {
+			sawGap = true
+		}
+	}
+	if len(result.Candidates) > 0 && !sawGap {
+		t.Error("candidates do not carry absolute gap")
+	}
+}
+
+// TestModularityLowOnClique verifies a single clique (no community structure)
+// scores near-zero modularity — the hairball signal.
+func TestModularityLowOnClique(t *testing.T) {
+	g := buildPureClique(6)
+
+	result, err := SpectralCluster(g, DefaultOptions())
+	if err != nil {
+		t.Fatalf("SpectralCluster failed: %v", err)
+	}
+	if result.Modularity > 0.2 {
+		t.Errorf("clique modularity = %v, want <= 0.2 (no real modules)", result.Modularity)
+	}
+}
