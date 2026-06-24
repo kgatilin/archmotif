@@ -49,10 +49,6 @@ var DefaultEdgeKinds = []string{
 }
 
 const (
-	// layerGap is the minimum jump in trophic height that separates two
-	// layers. Heights are normalised so an ideal hierarchy spaces edges by
-	// 1.0; a gap above half a level marks a real stratum boundary.
-	layerGap = 0.5
 	// backwardSpan is the minimum upward reach (h[to] − h[from]) for a
 	// dependency edge to count as an inversion, filtering intra-layer jitter
 	// from the continuous solve.
@@ -331,50 +327,41 @@ func solveComponentHeights(members []int, adj []map[int]float64, outDeg, inDeg, 
 	}
 }
 
-// cutLayers groups nodes into layers by gaps in the sorted height
-// distribution. Level 0 is the lowest (foundation).
+// cutLayers groups nodes into layers by their integer trophic level — the
+// height rounded to the nearest whole number. This is the natural
+// discretization of the trophic construction (edges target +1 per hop, so an
+// integer height is "this many hops above the foundation") and, unlike
+// gap-based cutting, it scales: a dense graph of thousands of nodes still
+// separates into distinct levels instead of collapsing into one band when
+// consecutive heights are close. Empty levels are omitted; the reported Level
+// is the true rounded height, so a jump in Level signals a missing stratum.
 func cutLayers(ids []string, heights, totalDeg []float64) []Layer {
-	n := len(ids)
-	order := make([]int, n)
-	for i := range order {
-		order[i] = i
+	byLevel := map[int][]int{}
+	for i := range ids {
+		lvl := int(math.Round(heights[i]))
+		byLevel[lvl] = append(byLevel[lvl], i)
 	}
-	sort.Slice(order, func(i, j int) bool {
-		if heights[order[i]] != heights[order[j]] {
-			return heights[order[i]] < heights[order[j]]
-		}
-		return ids[order[i]] < ids[order[j]]
-	})
+	levels := make([]int, 0, len(byLevel))
+	for lvl := range byLevel {
+		levels = append(levels, lvl)
+	}
+	sort.Ints(levels)
 
-	var layers []Layer
-	var cur []int
-	flush := func(level int) {
-		if len(cur) == 0 {
-			return
-		}
-		members := make([]string, len(cur))
-		for i, g := range cur {
+	layers := make([]Layer, 0, len(levels))
+	for _, lvl := range levels {
+		idxs := byLevel[lvl]
+		members := make([]string, len(idxs))
+		for i, g := range idxs {
 			members[i] = ids[g]
 		}
 		sort.Strings(members)
 		layers = append(layers, Layer{
-			Level:   level,
+			Level:   lvl,
 			Size:    len(members),
-			Center:  centerOf(cur, ids, totalDeg),
+			Center:  centerOf(idxs, ids, totalDeg),
 			Members: members,
 		})
-		cur = nil
 	}
-
-	level := 0
-	for i, g := range order {
-		if i > 0 && heights[g]-heights[order[i-1]] > layerGap {
-			flush(level)
-			level++
-		}
-		cur = append(cur, g)
-	}
-	flush(level)
 	return layers
 }
 
