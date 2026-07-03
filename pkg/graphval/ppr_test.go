@@ -138,6 +138,59 @@ func TestPPRUnknownSeedsFallBackToGlobal(t *testing.T) {
 	}
 }
 
+// TestPPRWeightBiasesDiffusion: a heavier out-edge carries proportionally more
+// mass. Seed s has s→x (weight 1) and s→y (weight 3); x and y are sinks, so the
+// only inflow each receives is s's mass split by edge weight — y must get
+// exactly 3× x, independent of the restart probability.
+func TestPPRWeightBiasesDiffusion(t *testing.T) {
+	g, err := New(
+		[]Node{{Name: "s"}, {Name: "x"}, {Name: "y"}},
+		[]Edge{
+			{From: "s", To: "x", Weight: 1},
+			{From: "s", To: "y", Weight: 3},
+		},
+	)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	by := scoreByName(g.PersonalizedPageRankByNames([]string{"s"}, 0.15, false))
+	if !(by["y"] > by["x"]) {
+		t.Fatalf("heavier-edge target y (%v) should outrank x (%v)", by["y"], by["x"])
+	}
+	if ratio := by["y"] / by["x"]; math.Abs(ratio-3.0) > 1e-6 {
+		t.Errorf("y/x mass ratio = %v, want 3.0 (edge weights 3:1)", ratio)
+	}
+}
+
+// TestPPRExplicitWeightOneEqualsUnweighted: an edge with Weight:1 is identical
+// to an edge with no weight set (Weight defaults to 1), so introducing weighted
+// edges never perturbs an existing unweighted caller's results.
+func TestPPRExplicitWeightOneEqualsUnweighted(t *testing.T) {
+	def := pprFixture(t) // edges built without Weight
+	weighted, err := New(
+		[]Node{{Name: "a"}, {Name: "b"}, {Name: "c"}, {Name: "d"}, {Name: "e"}},
+		[]Edge{
+			{From: "a", To: "b", Weight: 1},
+			{From: "b", To: "c", Weight: 1},
+			{From: "c", To: "a", Weight: 1},
+			{From: "d", To: "a", Weight: 1},
+			{From: "a", To: "e", Weight: 1},
+		},
+	)
+	if err != nil {
+		t.Fatalf("New weighted: %v", err)
+	}
+	for _, und := range []bool{false, true} {
+		d := def.PersonalizedPageRankByNames([]string{"a"}, 0.15, und)
+		w := weighted.PersonalizedPageRankByNames([]string{"a"}, 0.15, und)
+		for i := range d {
+			if d[i] != w[i] {
+				t.Fatalf("und=%v: Weight:1 diverged from unweighted at %d: %+v vs %+v", und, i, d[i], w[i])
+			}
+		}
+	}
+}
+
 func TestPPREmptyGraph(t *testing.T) {
 	g, err := New(nil, nil)
 	if err != nil {

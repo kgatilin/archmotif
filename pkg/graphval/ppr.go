@@ -26,8 +26,9 @@ const (
 
 // PersonalizedPageRank computes restart-biased ("personalized") PageRank over
 // the directed adjacency A by power iteration — the standard random-surfer
-// diffusion. At each step the surfer either follows a uniformly-chosen outgoing
-// edge (probability 1−restart) or teleports back to the seed set (probability
+// diffusion. At each step the surfer either follows an outgoing edge
+// (probability 1−restart), chosen in proportion to edge weight — uniformly when
+// the graph is unweighted — or teleports back to the seed set (probability
 // restart). The returned length-N vector is a probability distribution over the
 // nodes (entries sum to 1); each entry is that node's structural proximity to
 // the seeds. Higher = closer to / more reachable from the seeds.
@@ -46,8 +47,9 @@ const (
 //
 // It is the fixpoint of r ← (1−α)·Pᵀr + ((1−α)·d + α)·s, where P is the
 // row-stochastic transition matrix (the effective adjacency with each row
-// divided by its out-degree), and d is the probability mass sitting on dangling
-// (out-degree-0) nodes, redistributed through s so r stays a distribution.
+// divided by its total out-weight), and d is the probability mass sitting on
+// dangling (zero-out-weight) nodes, redistributed through s so r stays a
+// distribution.
 // Iterates to L1 convergence (tol 1e-10) or pprMaxIter steps. Deterministic.
 func (g *Graph) PersonalizedPageRank(seeds []int, restart float64, undirected bool) []float64 {
 	n := g.N()
@@ -88,33 +90,39 @@ func (g *Graph) PersonalizedPageRank(seeds []int, restart float64, undirected bo
 	// edge reports whether the surfer may step i→j: a direct edge, plus the
 	// reverse edge when undirected symmetrisation is requested.
 	a := g.a.Slice(0, n, 0, n)
-	edge := func(i, j int) bool {
-		if a.At(i, j) > 0 {
-			return true
+	// weight is the effective edge strength i→j: the stored weight, and for an
+	// undirected walk the max with the reverse edge (so a symmetric edge keeps
+	// its single weight instead of doubling). With every weight == 1 this is the
+	// original 0/1 adjacency and the boolean OR it replaced, so the unweighted
+	// result is bit-for-bit unchanged.
+	weight := func(i, j int) float64 {
+		w := a.At(i, j)
+		if undirected {
+			if r := a.At(j, i); r > w {
+				w = r
+			}
 		}
-		return undirected && a.At(j, i) > 0
+		return w
 	}
 
-	// Row-stochastic transition P[i][j] = 1/outdeg(i) over the effective
-	// adjacency. Dangling rows (out-degree 0) stay zero; their mass is
-	// teleported via the d term.
+	// Row-stochastic transition P[i][j] = w(i,j)/Σ_j w(i,j) over the effective
+	// adjacency — mass follows an out-edge in proportion to its weight. Dangling
+	// rows (total out-weight 0) stay zero; their mass is teleported via the d
+	// term.
 	P := mat.NewDense(n, n, nil)
 	dangling := make([]bool, n)
 	for i := 0; i < n; i++ {
 		deg := 0.0
 		for j := 0; j < n; j++ {
-			if edge(i, j) {
-				deg++
-			}
+			deg += weight(i, j)
 		}
 		if deg == 0 {
 			dangling[i] = true
 			continue
 		}
-		inv := 1.0 / deg
 		for j := 0; j < n; j++ {
-			if edge(i, j) {
-				P.Set(i, j, inv)
+			if w := weight(i, j); w > 0 {
+				P.Set(i, j, w/deg)
 			}
 		}
 	}

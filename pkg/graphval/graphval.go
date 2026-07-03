@@ -37,6 +37,13 @@ type Node struct {
 type Edge struct {
 	From string
 	To   string
+	// Weight is the edge strength consumed by weighted algorithms (weighted
+	// PersonalizedPageRank). A non-positive Weight is treated as 1, so edges
+	// built without a weight behave exactly as the original 0/1 graph and every
+	// existing caller is unaffected. Structural, unweighted algorithms
+	// (cycles/SCC/layering) treat any positive weight as a present edge — weight
+	// only shapes the weighted algorithms.
+	Weight float64
 }
 
 // Graph is an immutable directed graph. The caller builds it from nodes and
@@ -51,7 +58,7 @@ type Graph struct {
 	names []string
 	index map[string]int // node name → index
 	attrs []map[string]string
-	a     *mat.Dense // N×N 0/1 adjacency; A[i][j]=1 means i→j.
+	a     *mat.Dense // N×N adjacency; A[i][j]>0 means i→j, the value is the edge weight (1 for unweighted edges).
 }
 
 // New builds a Graph from a set of named nodes and directed edges.
@@ -60,7 +67,8 @@ type Graph struct {
 //     must be unique; a duplicate name is an error.
 //   - edges: directed edges referencing node names. Every From and To must name
 //     a node in nodes, or New returns an error. Self-edges and duplicate edges
-//     are accepted (a duplicate edge is idempotent in a 0/1 adjacency).
+//     are accepted; a duplicate edge overwrites the stored weight (last one
+//     wins), so a repeated unweighted edge stays idempotent at weight 1.
 //
 // New copies all input so the caller may reuse its slices and maps freely. The
 // adjacency matrix is built internally and is never exposed.
@@ -97,7 +105,11 @@ func New(nodes []Node, edges []Edge) (*Graph, error) {
 		if !ok {
 			return nil, fmt.Errorf("graphval: edge references unknown target node %q", e.To)
 		}
-		a.Set(from, to, 1)
+		w := e.Weight
+		if w <= 0 {
+			w = 1
+		}
+		a.Set(from, to, w)
 	}
 
 	return &Graph{names: names, index: index, attrs: attrs, a: a}, nil
