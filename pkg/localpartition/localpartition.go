@@ -16,6 +16,18 @@
 // conductance computation. EdgeKinds restricts which edge kinds participate
 // (e.g. structural dependency edges only, excluding contains/field/file).
 //
+// # Two entrypoints
+//
+// LocalPartition takes archmotif's typed graph, treats every kept edge as
+// weight 1 and every seed as equally relevant — the classic ACL setup.
+//
+// LocalPartitionWeighted takes plain WeightedEdge and Seed values, so a caller
+// with its own graph representation never has to build a typed graph just to be
+// read back out, and can additionally express what the typed form cannot: how
+// much each seed is trusted, how much each edge counts, and how hard to discount
+// the graph's hubs (Options.HubDamping). The typed entrypoint is a thin adapter
+// over the weighted one; there is a single implementation of the algorithm.
+//
 // # Output
 //
 // Result.Weights is the continuous primitive: the degree-normalized PPR mass
@@ -49,8 +61,30 @@ type Options struct {
 	// 1/((1-Alpha)*Epsilon), so epsilon also caps region size.
 	Epsilon float64
 	// EdgeKinds restricts which edge kinds the walk and conductance use.
-	// Empty means all edge kinds participate.
+	// Empty means all edge kinds participate. It applies to LocalPartition
+	// only — LocalPartitionWeighted is handed the edges it should use.
 	EdgeKinds []string
+	// HubDamping (tau) discounts edges by how popular their endpoints are,
+	// replacing every undirected weight w(u,v) with w(u,v)/(d_u*d_v)^tau, where
+	// d is the weighted degree of the undamped graph. Zero (the default) leaves
+	// the graph exactly as given.
+	//
+	// Dependency graphs have god-nodes: a shared helper, a logging call, a
+	// central dispatcher that half the codebase touches. A random walk finds
+	// those from every seed, so the same handful of hubs turns up in every local
+	// region and crowds out whatever was specific to the query — and worse, they
+	// are a bridge, so mass crosses through them into neighbourhoods that have
+	// nothing to do with the seeds. Dividing by the endpoint degrees makes a link
+	// through a hub cost more than a link between two ordinarily-connected nodes,
+	// so the walk favours paths that are distinctive over paths that are merely
+	// popular.
+	//
+	// tau = 0.5 is the usual starting point: it is the symmetric normalization
+	// D^-1/2 W D^-1/2 that spectral methods apply for the same reason. tau = 1
+	// is aggressive and can strand genuinely central code. Damping changes the
+	// degrees the sweep sees as well as the walk, so it moves the region, not
+	// just the ranking.
+	HubDamping float64
 }
 
 // DefaultOptions returns the standard ACL parameters.
@@ -79,6 +113,10 @@ type Result struct {
 
 // LocalPartition runs ACL approximate-PPR + sweep cut from seeds over g.
 //
+// Every kept edge counts for 1 and every seed is equally relevant; the work is
+// done by LocalPartitionWeighted, which this adapts g onto. Callers that need
+// per-edge or per-seed weights go there directly.
+//
 // Seeds not present in g are ignored. If no seeds are present, an empty
 // Result (no region, empty weights) is returned with a nil error — an empty
 // diff has no region, which is a valid answer, not a failure.
@@ -86,71 +124,54 @@ func LocalPartition(g *Graph, seeds []string, opts Options) (Result, error) {
 	if g == nil {
 		return Result{}, fmt.Errorf("localpartition: nil graph")
 	}
-	if opts.Alpha <= 0 || opts.Alpha >= 1 {
-		return Result{}, fmt.Errorf("localpartition: alpha must be in (0,1), got %v", opts.Alpha)
-	}
-	if opts.Epsilon <= 0 {
-		return Result{}, fmt.Errorf("localpartition: epsilon must be > 0, got %v", opts.Epsilon)
+	if err := opts.validate(); err != nil {
+		return Result{}, err
 	}
 
-	adj := buildAdjacency(g, opts.EdgeKinds)
+	nodes, edges := graphEdges(g, opts.EdgeKinds)
 
-	// Restrict seeds to nodes that exist in the (filtered) graph. A seed
-	// with no incident edges of the requested kinds still exists as a node
-	// and seeds mass; it simply cannot diffuse.
-	present := make([]string, 0, len(seeds))
+	// Restrict seeds to nodes that exist in g. A seed with no incident edge of
+	// the requested kinds still exists as a node and seeds mass; it simply
+	// cannot diffuse. Nodes of g that are isolated and unseeded are left out of
+	// the weighted graph entirely: they contribute zero degree, so they change
+	// neither the volume nor any conductance.
+	present := make([]Seed, 0, len(seeds))
 	seen := map[string]bool{}
 	for _, s := range seeds {
-		if _, ok := adj[s]; ok && !seen[s] {
-			present = append(present, s)
+		if nodes[s] && !seen[s] {
+			present = append(present, Seed{Name: s})
 			seen[s] = true
 		}
 	}
 	if len(present) == 0 {
 		return Result{Weights: map[string]float64{}}, nil
 	}
-	sort.Strings(present)
 
-	p := approxPPR(adj, present, opts.Alpha, opts.Epsilon)
-
-	// Degree-normalized weights are what the sweep ranks on and what callers
-	// use to weight downstream analysis.
-	weights := make(map[string]float64, len(p))
-	for id, mass := range p {
-		deg := float64(len(adj[id]))
-		if deg == 0 {
-			weights[id] = mass
-			continue
-		}
-		weights[id] = mass / deg
-	}
-
-	region, cond := sweepCut(adj, weights)
-	sort.Strings(region)
-
-	return Result{
-		Region:      region,
-		Weights:     weights,
-		Conductance: cond,
-		SeedCount:   len(present),
-	}, nil
+	return LocalPartitionWeighted(edges, present, opts)
 }
 
-// buildAdjacency constructs a symmetric adjacency map from g, keeping only
-// the requested edge kinds (all kinds if edgeKinds is empty). Every node in
-// g appears as a key (possibly with an empty neighbour set) so isolated
-// seeds are still recognized as present. Parallel edges between the same
-// pair collapse to a single undirected neighbour link (simple-graph degree).
-func buildAdjacency(g *Graph, edgeKinds []string) map[string]map[string]bool {
+// graphEdges extracts g's node set and its undirected edge list, keeping only
+// the requested edge kinds (all kinds if edgeKinds is empty).
+//
+// Each unordered node pair yields exactly one weight-1 edge no matter how many
+// edges of g connect it. That collapse is the historical contract of the typed
+// entrypoint — degree there means "number of distinct neighbours", the
+// simple-graph degree — and it has to survive the delegation: the weighted path
+// sums parallel and opposing edges, so emitting them one by one would silently
+// double the degree of every reciprocated pair and move the sweep cut.
+func graphEdges(g *Graph, edgeKinds []string) (map[string]bool, []WeightedEdge) {
 	kindSet := map[mgraph.EdgeKind]bool{}
 	for _, k := range edgeKinds {
 		kindSet[mgraph.EdgeKind(k)] = true
 	}
 
-	adj := make(map[string]map[string]bool, g.NodeCount())
+	nodes := make(map[string]bool, g.NodeCount())
 	for _, n := range g.Nodes() {
-		adj[n.ID] = map[string]bool{}
+		nodes[n.ID] = true
 	}
+
+	edges := make([]WeightedEdge, 0, g.EdgeCount())
+	emitted := map[[2]string]bool{}
 	for _, e := range g.Edges() {
 		if len(kindSet) > 0 && !kindSet[e.Kind] {
 			continue
@@ -159,161 +180,24 @@ func buildAdjacency(g *Graph, edgeKinds []string) map[string]map[string]bool {
 			continue // self-loops do not contribute to conductance
 		}
 		// Defensive: only link nodes that exist as graph nodes.
-		if _, ok := adj[e.From]; !ok {
+		if !nodes[e.From] || !nodes[e.To] {
 			continue
 		}
-		if _, ok := adj[e.To]; !ok {
+		pair := [2]string{e.From, e.To}
+		if pair[0] > pair[1] {
+			pair[0], pair[1] = pair[1], pair[0]
+		}
+		if emitted[pair] {
 			continue
 		}
-		adj[e.From][e.To] = true
-		adj[e.To][e.From] = true
+		emitted[pair] = true
+		edges = append(edges, WeightedEdge{From: pair[0], To: pair[1], Weight: 1})
 	}
-	return adj
-}
-
-// approxPPR computes the ACL approximate Personalized PageRank vector p for a
-// uniform distribution over seeds, using the push operation on the lazy
-// random walk. The active worklist is processed FIFO; the fixed point is
-// order-independent up to the epsilon tolerance, and the sweep applies a
-// deterministic tie-break, so the Result is deterministic.
-func approxPPR(adj map[string]map[string]bool, seeds []string, alpha, eps float64) map[string]float64 {
-	p := map[string]float64{}
-	r := map[string]float64{}
-
-	seedMass := 1.0 / float64(len(seeds))
-	for _, s := range seeds {
-		r[s] += seedMass
-	}
-
-	// active holds nodes whose residual currently exceeds eps*deg. queued
-	// guards against enqueuing the same node twice.
-	queue := make([]string, 0, len(seeds))
-	queued := map[string]bool{}
-	enqueue := func(u string) {
-		if queued[u] {
-			return
+	sort.Slice(edges, func(i, j int) bool {
+		if edges[i].From != edges[j].From {
+			return edges[i].From < edges[j].From
 		}
-		deg := float64(len(adj[u]))
-		threshold := eps * deg
-		if deg == 0 {
-			// An isolated node can never spread; push it once so its alpha
-			// mass lands in p, but only while it still holds residual.
-			threshold = 0
-		}
-		if r[u] > threshold {
-			queue = append(queue, u)
-			queued[u] = true
-		}
-	}
-	for _, s := range seeds {
-		enqueue(s)
-	}
-
-	for len(queue) > 0 {
-		u := queue[0]
-		queue = queue[1:]
-		queued[u] = false
-
-		ru := r[u]
-		deg := float64(len(adj[u]))
-		if deg == 0 {
-			// Drain isolated residual into p once; nothing to spread.
-			p[u] += alpha * ru
-			r[u] = 0
-			continue
-		}
-		if ru <= eps*deg {
-			continue
-		}
-
-		p[u] += alpha * ru
-		// Lazy-walk push: half the non-teleport mass stays, half spreads.
-		r[u] = (1 - alpha) * ru / 2
-		spread := (1 - alpha) * ru / (2 * deg)
-		for v := range adj[u] {
-			r[v] += spread
-			enqueue(v)
-		}
-		// u may still be over threshold after keeping half its mass.
-		enqueue(u)
-	}
-	return p
-}
-
-// sweepCut orders nodes by descending weight (degree-normalized PPR) and
-// returns the prefix S of minimum conductance, along with that conductance.
-// Conductance(S) = cut(S) / min(vol(S), vol(V\S)), where vol is the sum of
-// degrees and cut is the number of edges leaving S.
-func sweepCut(adj map[string]map[string]bool, weights map[string]float64) ([]string, float64) {
-	// Candidate nodes are those the walk reached (weight > 0), ordered by
-	// weight desc, id asc for deterministic ties.
-	ordered := make([]string, 0, len(weights))
-	for id, w := range weights {
-		if w > 0 {
-			ordered = append(ordered, id)
-		}
-	}
-	if len(ordered) == 0 {
-		return nil, 0
-	}
-	sort.Slice(ordered, func(i, j int) bool {
-		wi, wj := weights[ordered[i]], weights[ordered[j]]
-		if wi != wj {
-			return wi > wj
-		}
-		return ordered[i] < ordered[j]
+		return edges[i].To < edges[j].To
 	})
-
-	// Total volume of the whole (filtered) graph.
-	var totalVol float64
-	for id := range adj {
-		totalVol += float64(len(adj[id]))
-	}
-
-	inSet := map[string]bool{}
-	var vol, cut float64
-	bestCond := 0.0
-	bestK := 0
-	haveBest := false
-
-	for k, id := range ordered {
-		deg := float64(len(adj[id]))
-		// Adding id: its degree joins the volume; edges to nodes already in
-		// the set stop being cut edges, edges to outside nodes become cut.
-		vol += deg
-		for v := range adj[id] {
-			if inSet[v] {
-				cut-- // previously a cut edge (v in, id out) — now internal
-			} else {
-				cut++ // id in, v out — a new cut edge
-			}
-		}
-		inSet[id] = true
-
-		complementVol := totalVol - vol
-		denom := vol
-		if complementVol < denom {
-			denom = complementVol
-		}
-		if denom <= 0 {
-			// S is the whole graph (or its complement has no volume): a cut
-			// here is meaningless, stop — no better sweep beyond this point.
-			break
-		}
-		cond := cut / denom
-		if !haveBest || cond < bestCond {
-			bestCond = cond
-			bestK = k + 1
-			haveBest = true
-		}
-	}
-
-	if !haveBest {
-		// No interior cut found (e.g. a single isolated seed): the region is
-		// just the reached set.
-		region := append([]string(nil), ordered...)
-		return region, 0
-	}
-	region := append([]string(nil), ordered[:bestK]...)
-	return region, bestCond
+	return nodes, edges
 }
