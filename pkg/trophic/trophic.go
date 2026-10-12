@@ -26,7 +26,6 @@ import (
 
 	"gonum.org/v1/gonum/graph/simple"
 	"gonum.org/v1/gonum/graph/topo"
-	"gonum.org/v1/gonum/mat"
 
 	mgraph "github.com/kgatilin/archmotif/internal/graph"
 	archmotifimport "github.com/kgatilin/archmotif/pkg/archmotifimport"
@@ -275,39 +274,29 @@ func solveComponentHeights(members []int, adj []map[int]float64, outDeg, inDeg, 
 		d[i] = deg
 		b[i] = outDeg[g] - inDeg[g]
 	}
-	// Ground node 0 (height 0); solve the reduced (m-1) PD system.
+	// Ground node 0 (height 0); solve the reduced (m-1) PD system. The
+	// Laplacian has one row per node and one entry per edge, so it is solved
+	// sparse: a dense factorization costs n² memory and n³ time, which on a
+	// symbol graph of ten thousand nodes is gigabytes and minutes.
 	r := m - 1
-	lap := mat.NewSymDense(r, nil)
+	rowStart := make([]int, r+1)
+	var cols []int
+	var vals []float64
 	for i := 1; i < m; i++ {
-		lap.SetSym(i-1, i-1, d[i])
-	}
-	for i, g := range members {
-		if i == 0 {
-			continue
-		}
-		for gj, w := range adj[g] {
-			j, ok := local[gj]
-			if !ok || j == 0 || j <= i {
-				continue
+		rowStart[i-1] = len(cols)
+		for gj, w := range adj[members[i]] {
+			if j, ok := local[gj]; ok && j != 0 && j != i {
+				cols = append(cols, j-1)
+				vals = append(vals, -w)
 			}
-			lap.SetSym(i-1, j-1, -w)
 		}
 	}
-	rhs := mat.NewVecDense(r, nil)
-	for i := 1; i < m; i++ {
-		rhs.SetVec(i-1, b[i])
-	}
+	rowStart[r] = len(cols)
+	lap := sparseSPD{diag: d[1:], rowStart: rowStart, cols: cols, vals: vals}
 
-	var chol mat.Cholesky
-	if ok := chol.Factorize(lap); !ok {
+	sol, ok := lap.solve(b[1:])
+	if !ok {
 		// Singular/ill-conditioned: leave the component flat at 0.
-		for _, g := range members {
-			heights[g] = 0
-		}
-		return
-	}
-	var sol mat.VecDense
-	if err := chol.SolveVecTo(&sol, rhs); err != nil {
 		for _, g := range members {
 			heights[g] = 0
 		}
@@ -317,7 +306,7 @@ func solveComponentHeights(members []int, adj []map[int]float64, outDeg, inDeg, 
 	h := make([]float64, m)
 	min := 0.0
 	for i := 1; i < m; i++ {
-		h[i] = sol.AtVec(i - 1)
+		h[i] = sol[i-1]
 		if h[i] < min {
 			min = h[i]
 		}
